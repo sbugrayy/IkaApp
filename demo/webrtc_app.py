@@ -1,11 +1,11 @@
+# demo/webrtc_app.py (ALICI KAMERASI AKTİF HALİ)
+
 import sys
 import os
 import datetime
 import socket
 
 # ==================== AYAR ====================
-# Diğer bilgisayardan bağlanırken, sunucunun çalıştığı bilgisayarın IP'sini yazmalı!!!!!.
-# Örnek: SIGNALING_SERVER_IP = "192.168.1.10"
 SIGNALING_SERVER_IP = 'auto'
 # ==============================================
 
@@ -40,14 +40,16 @@ class WebRTCWindow(QMainWindow):
         self.view.settings().setAttribute(QWebEngineSettings.JavascriptCanOpenWindows, True)
         self.view.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
 
+        # Her iki mod için de kamera iznini bağlıyoruz.
+        self.view.page().featurePermissionRequested.connect(self.on_feature_permission)
+
         if self.mode == "receiver":
             html_path = os.path.abspath("receiver.html")
             self.setWindowTitle("Alıcı (Receiver)")
             self.view.page().profile().downloadRequested.connect(self.on_download_requested)
-        else:
+        else:  # sender
             html_path = os.path.abspath("sender.html")
             self.setWindowTitle("Gönderici (Sender)")
-            self.view.page().featurePermissionRequested.connect(self.on_feature_permission)
 
         self.load_html_with_ip(html_path)
 
@@ -96,7 +98,6 @@ if __name__ == "__main__":
         server_ip = get_local_ip()
 
     print(f"Sinyal Sunucusu için kullanılacak IP Adresi: {server_ip}")
-    print("Pencerelere sağ tıklayıp 'Inspect' seçerek konsol loglarını görebilirsiniz.")
 
     sender_win = WebRTCWindow(mode="sender", signaling_ip=server_ip)
     receiver_win = WebRTCWindow(mode="receiver", signaling_ip=server_ip)
