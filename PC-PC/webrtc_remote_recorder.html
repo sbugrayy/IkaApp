@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>WebRTC Remote Stream Kayıt</title>
+<style>
+body { font-family: sans-serif; padding: 16px; }
+video { width: 640px; max-width: 100%; background: #000; border-radius: 8px; margin-bottom: 12px; }
+button { padding: 8px 12px; border-radius: 8px; border: 0; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<h2>Remote WebRTC Alıcı & Kayıt</h2>
+<video id="remoteVideo" autoplay playsinline></video>
+<br>
+<button id="recordBtn">Kaydı Başlat/Durdur</button>
+<p id="status"></p>
+
+<script>
+const remoteVideo = document.getElementById("remoteVideo");
+const btn = document.getElementById("recordBtn");
+const statusEl = document.getElementById("status");
+let pc = new RTCPeerConnection({
+    iceServers: [
+        { urls: "stun:stun.l.google.com:19302" }, // STUN server
+        // TURN server ekleyebilirsin
+    ]
+});
+let ws;
+let mediaRecorder;
+let chunks = [];
+
+// --- WebSocket Signaling ---
+function connectWS() {
+    ws = new WebSocket("ws://SIGNALING_SERVER_IP:8765"); // kendi server IP
+    ws.onmessage = async (msg) => {
+        const data = JSON.parse(msg.data);
+        if (data.sdp) {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            if (data.sdp.type === "offer") {
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                ws.send(JSON.stringify({ sdp: pc.localDescription }));
+            }
+        }
+        if (data.candidate) {
+            try { await pc.addIceCandidate(data.candidate); } catch(e){ console.error(e); }
+        }
+    };
+}
+connectWS();
+
+// --- Remote track ---
+pc.ontrack = (event) => {
+    remoteVideo.srcObject = event.streams[0];
+    statusEl.textContent = "Remote stream geldi.";
+};
+
+// --- ICE candidates ---
+pc.onicecandidate = (event) => {
+    if (event.candidate) ws.send(JSON.stringify({ candidate: event.candidate }));
+};
+
+// --- Kayıt ---
+btn.onclick = () => {
+    if (!mediaRecorder || mediaRecorder.state === "inactive") {
+        chunks = [];
+        mediaRecorder = new MediaRecorder(remoteVideo.srcObject);
+        mediaRecorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(chunks, { type: "video/webm" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "remote_stream.webm";
+            a.click();
+            setTimeout(()=>URL.revokeObjectURL(url),10000);
+            statusEl.textContent = "Kayıt tamamlandı.";
+        };
+        mediaRecorder.start(1000);
+        statusEl.textContent = "Kayıt başladı...";
+        btn.textContent = "Kaydı Durdur";
+    } else {
+        mediaRecorder.stop();
+        btn.textContent = "Kaydı Başlat/Durdur";
+    }
+};
+</script>
+
+</body>
+</html>

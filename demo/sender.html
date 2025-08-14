@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Sender</title>
+</head>
+<body>
+<h2>Gönderici WebRTC</h2>
+<video id="localVideo" autoplay muted playsinline></video>
+<script>
+let pc = new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
+let ws = new WebSocket("ws://SIGNALING_SERVER_IP:8765"); // server IP değiştir
+const videoEl = document.getElementById("localVideo");
+
+async function init() {
+    const stream = await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+    videoEl.srcObject = stream;
+    stream.getTracks().forEach(t => pc.addTrack(t, stream));
+
+    pc.onicecandidate = e => { if(e.candidate) ws.send(JSON.stringify({candidate:e.candidate})); };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    ws.onopen = () => ws.send(JSON.stringify({sdp:pc.localDescription}));
+}
+
+ws.onmessage = async (msg) => {
+    const data = JSON.parse(msg.data);
+    if(data.sdp){
+        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+    }
+    if(data.candidate){
+        await pc.addIceCandidate(data.candidate);
+    }
+}
+
+init();
+</script>
+</body>
+</html>
