@@ -1,90 +1,111 @@
-import sys, os, datetime, tempfile
+import sys
+import os
+import datetime
+import socket
 
-# ---------- GPU ve cache ayarları ------------
-os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-gpu --disable-software-rasterizer"
+# ==================== AYAR ====================
+# Diğer bilgisayardan bağlanırken, sunucunun çalıştığı bilgisayarın IP'sini yazmalı!!!!!.
+# Örnek: SIGNALING_SERVER_IP = "192.168.1.10"
+SIGNALING_SERVER_IP = 'auto'
+# ==============================================
 
-from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QMessageBox
-from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWebEngineCore import QWebEngineProfile
-from PyQt6.QtCore import QUrl
+from PyQt5.QtWidgets import QApplication, QMainWindow
+from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage, QWebEngineDownloadItem, QWebEngineSettings
+from PyQt5.QtCore import QUrl
 
-# Kayıt dizini
+os.environ['QTWEBENGINE_REMOTE_DEBUGGING'] = "9223"
 SAVE_DIR = os.path.abspath("./recordings")
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-# Cache dizini
-temp_dir = os.path.join(tempfile.gettempdir(), "QtWebEngineCache")
-os.makedirs(temp_dir, exist_ok=True)
-profile = QWebEngineProfile.defaultProfile()
-profile.setCachePath(temp_dir)
-profile.setPersistentStoragePath(temp_dir)
-# -------------------------------------------
 
-class ModeSelectionWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("WebRTC Mod Seçimi")
-        self.resize(300,150)
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('10.255.255.255', 1))
+        IP = s.getsockname()[0]
+    except Exception:
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return IP
 
-        layout = QVBoxLayout()
-        btn_sender = QPushButton("Gönderici (Sender)")
-        btn_receiver = QPushButton("Alıcı (Receiver)")
-
-        btn_sender.clicked.connect(self.start_sender)
-        btn_receiver.clicked.connect(self.start_receiver)
-
-        layout.addWidget(btn_sender)
-        layout.addWidget(btn_receiver)
-
-        container = QWidget()
-        container.setLayout(layout)
-        self.setCentralWidget(container)
-
-    def start_sender(self):
-        self.hide()
-        self.sender_win = WebRTCWindow(mode="sender")
-        self.sender_win.show()
-
-    def start_receiver(self):
-        self.hide()
-        self.receiver_win = WebRTCWindow(mode="receiver")
-        self.receiver_win.show()
 
 class WebRTCWindow(QMainWindow):
-    def __init__(self, mode):
+    def __init__(self, mode, signaling_ip):
         super().__init__()
         self.mode = mode
+        self.signaling_ip = signaling_ip
         self.view = QWebEngineView()
-        self.setCentralWidget(self.view)
 
-        if self.mode=="receiver":
-            self.view.page().downloadRequested.connect(self.on_download_requested)
+        self.view.settings().setAttribute(QWebEngineSettings.JavascriptCanOpenWindows, True)
+        self.view.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+
+        if self.mode == "receiver":
             html_path = os.path.abspath("receiver.html")
             self.setWindowTitle("Alıcı (Receiver)")
+            self.view.page().profile().downloadRequested.connect(self.on_download_requested)
         else:
             html_path = os.path.abspath("sender.html")
             self.setWindowTitle("Gönderici (Sender)")
+            self.view.page().featurePermissionRequested.connect(self.on_feature_permission)
 
-        if not os.path.exists(html_path):
-            QMessageBox.critical(self, "Hata", f"{html_path} bulunamadı!")
-        else:
-            self.view.load(QUrl.fromLocalFile(html_path))
+        self.load_html_with_ip(html_path)
 
-        self.resize(900,700)
+        self.setCentralWidget(self.view)
+        self.resize(900, 700)
 
-    def on_download_requested(self, download):
-        # download: otomatik olarak doğru QWebEngineDownloadItem objesi
+    def load_html_with_ip(self, html_path):
+        try:
+            with open(html_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+
+            html_content = html_content.replace('SIGNALING_SERVER_IP', self.signaling_ip)
+
+            base_url = QUrl.fromLocalFile(os.path.dirname(html_path) + os.path.sep)
+            self.view.setHtml(html_content, baseUrl=base_url)
+
+        except FileNotFoundError:
+            self.view.setHtml(f"<h2>Hata</h2><p>HTML dosyası bulunamadı: {html_path}</p>")
+
+    def on_feature_permission(self, url, feature):
+        allowed_features = {
+            QWebEnginePage.MediaAudioCapture,
+            QWebEnginePage.MediaVideoCapture,
+            QWebEnginePage.MediaAudioVideoCapture,
+        }
+        if feature in allowed_features:
+            self.view.page().setFeaturePermission(url, feature, QWebEnginePage.PermissionGrantedByUser)
+
+    def on_download_requested(self, download: QWebEngineDownloadItem):
         base_name = os.path.basename(download.path()) or "remote_stream.webm"
         stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         name, ext = os.path.splitext(base_name)
         if not ext: ext = ".webm"
         final_name = os.path.join(SAVE_DIR, f"{name}_{stamp}{ext}")
+
         download.setPath(final_name)
         download.accept()
-        download.finished.connect(lambda: print(f"Kayıt tamamlandı: {final_name}"))
+        download.finished.connect(lambda: print(f"[OK] Kayıt tamamlandı: {final_name}"))
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    win = ModeSelectionWindow()
-    win.show()
-    sys.exit(app.exec())
+
+    server_ip = SIGNALING_SERVER_IP
+    if server_ip == 'auto':
+        server_ip = get_local_ip()
+
+    print(f"Sinyal Sunucusu için kullanılacak IP Adresi: {server_ip}")
+    print("Pencerelere sağ tıklayıp 'Inspect' seçerek konsol loglarını görebilirsiniz.")
+
+    sender_win = WebRTCWindow(mode="sender", signaling_ip=server_ip)
+    receiver_win = WebRTCWindow(mode="receiver", signaling_ip=server_ip)
+
+    sender_win.show()
+    receiver_win.show()
+
+    app_geometry = QApplication.desktop().availableGeometry()
+    sender_win.move(app_geometry.left() + 50, app_geometry.top() + 100)
+    receiver_win.move(sender_win.geometry().right() + 20, app_geometry.top() + 100)
+
+    sys.exit(app.exec_())

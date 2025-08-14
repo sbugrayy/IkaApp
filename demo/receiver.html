@@ -9,51 +9,71 @@
 <h2>Alıcı WebRTC</h2>
 <video id="remoteVideo" autoplay playsinline></video>
 <br>
-<button id="recordBtn">Kaydı Başlat/Durdur</button>
+<p><b>ICE Durumu:</b> <span id="ice-status"></span></p>
+<button id="recordBtn" disabled>Kaydı Başlat/Durdur</button>
 <p id="status"></p>
 <script>
+console.log("RECEIVER: Script başladı.");
+const iceStatusEl = document.getElementById('ice-status');
 let pc = new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
-let ws = new WebSocket("ws://SIGNALING_SERVER_IP:8765"); // server IP değiştir
+let ws = new WebSocket("ws://SIGNALING_SERVER_IP:8765"); // Bu satıra Python dokunacak
 const remoteVideo = document.getElementById("remoteVideo");
 const btn = document.getElementById("recordBtn");
 const statusEl = document.getElementById("status");
 let mediaRecorder, chunks=[];
 
-pc.ontrack = e => { remoteVideo.srcObject = e.streams[0]; statusEl.textContent="Remote stream geldi."; };
-pc.onicecandidate = e => { if(e.candidate) ws.send(JSON.stringify({candidate:e.candidate})); };
+ws.onopen = () => console.log("RECEIVER: Sinyal sunucusuna WebSocket bağlantısı açıldı.");
+ws.onclose = () => console.error("RECEIVER: WebSocket bağlantısı kapandı!");
+ws.onerror = (err) => console.error("RECEIVER: WebSocket hatası:", err);
+
+// --- BAĞLANTI DURUMUNU İZLEME ---
+pc.oniceconnectionstatechange = () => {
+    console.log(`RECEIVER: ICE bağlantı durumu değişti: ${pc.iceConnectionState}`);
+    iceStatusEl.textContent = pc.iceConnectionState;
+    if (pc.iceConnectionState === 'failed') {
+        console.error('RECEIVER: Peer connection başarısız oldu!');
+    }
+    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        console.log('RECEIVER: Bağlantı başarıyla kuruldu!');
+    }
+};
+
+pc.ontrack = e => {
+    console.log("RECEIVER: Uzak medya akışı (track) alındı! Videoya ekleniyor.");
+    remoteVideo.srcObject = e.streams[0];
+    statusEl.textContent="Remote stream geldi.";
+    btn.disabled = false;
+};
+pc.onicecandidate = e => {
+    if(e.candidate) {
+        console.log("RECEIVER: Yeni ICE adayı bulundu, sunucuya gönderiliyor.");
+        ws.send(JSON.stringify({candidate:e.candidate}));
+    }
+};
 
 ws.onmessage = async msg => {
+    console.log("RECEIVER: Sinyal sunucusundan mesaj alındı:", msg.data);
     const data = JSON.parse(msg.data);
     if(data.sdp){
+        console.log("RECEIVER: 'Offer' alındı, remote description olarak ayarlanıyor.");
         await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
         if(data.sdp.type==="offer"){
+            console.log("RECEIVER: 'Answer' oluşturuluyor.");
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
+            console.log("RECEIVER: Answer, sinyal sunucusuna gönderiliyor.");
             ws.send(JSON.stringify({sdp:pc.localDescription}));
         }
     }
-    if(data.candidate){ await pc.addIceCandidate(data.candidate); }
+    if(data.candidate){
+        console.log("RECEIVER: Göndericiden gelen ICE adayı ekleniyor.");
+        await pc.addIceCandidate(data.candidate);
+    }
 };
 
-// Kayıt butonu
-btn.onclick = () => {
-    if(!mediaRecorder || mediaRecorder.state==="inactive"){
-        chunks=[];
-        mediaRecorder = new MediaRecorder(remoteVideo.srcObject);
-        mediaRecorder.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
-        mediaRecorder.onstop=()=>{
-            const blob=new Blob(chunks,{type:"video/webm"});
-            const a=document.createElement("a");
-            a.href=URL.createObjectURL(blob);
-            a.download="remote_stream.webm";
-            a.click();
-            statusEl.textContent="Kayıt tamamlandı";
-        };
-        mediaRecorder.start(1000);
-        statusEl.textContent="Kayıt başladı...";
-        btn.textContent="Kaydı Durdur";
-    }else{ mediaRecorder.stop(); btn.textContent="Kaydı Başlat/Durdur"; }
-};
+// Kayıt butonu kodu aynı kalabilir...
+btn.onclick=()=>{if(!remoteVideo.srcObject){statusEl.textContent="Kaydedilecek bir görüntü akışı yok!";return}
+if(!mediaRecorder||mediaRecorder.state==="inactive"){chunks=[];mediaRecorder=new MediaRecorder(remoteVideo.srcObject);mediaRecorder.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data)};mediaRecorder.onstop=()=>{const blob=new Blob(chunks,{type:"video/webm"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="remote_stream.webm";a.click();statusEl.textContent="Kayıt tamamlandı"};mediaRecorder.start(1000);statusEl.textContent="Kayıt başladı...";btn.textContent="Kaydı Durdur"}else{mediaRecorder.stop();btn.textContent="Kaydı Başlat/Durdur"}};
 </script>
 </body>
 </html>
