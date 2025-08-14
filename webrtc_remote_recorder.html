@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>WebRTC Remote Stream Kayıt</title>
+<style>
+body { font-family: sans-serif; padding: 16px; }
+video { width: 640px; max-width: 100%; background: #000; border-radius: 8px; margin-bottom: 12px; }
+button { padding: 8px 12px; border-radius: 8px; border: 0; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<h2>Remote WebRTC Stream Kayıt</h2>
+<video id="remoteVideo" autoplay playsinline></video>
+<br>
+<button id="recordBtn">Kaydı Başlat/Durdur</button>
+<p id="status"></p>
+
+<script>
+let pc = new RTCPeerConnection();
+let mediaRecorder;
+let chunks = [];
+const videoEl = document.getElementById("remoteVideo");
+const statusEl = document.getElementById("status");
+const btn = document.getElementById("recordBtn");
+
+// --- Dummy remote stream simulation (for testing) ---
+async function setupDummyStream() {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    // PeerConnection ile remote track simülasyonu
+    stream.getTracks().forEach(track => pc.addTrack(track, stream));
+}
+
+// --- Remote track handler ---
+pc.ontrack = (event) => {
+    videoEl.srcObject = event.streams[0];
+    statusEl.textContent = "Remote stream geldi.";
+};
+
+// --- MediaRecorder ile kayıt ---
+btn.onclick = () => {
+    if (!mediaRecorder || mediaRecorder.state === "inactive") {
+        chunks = [];
+        mediaRecorder = new MediaRecorder(videoEl.srcObject);
+        mediaRecorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(chunks, { type: "video/webm" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "remote_stream.webm";
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
+            statusEl.textContent = "Kayıt tamamlandı.";
+        };
+        mediaRecorder.start(1000); // 1 saniyelik chunk
+        statusEl.textContent = "Kayıt başladı...";
+        btn.textContent = "Kaydı Durdur";
+    } else {
+        mediaRecorder.stop();
+        btn.textContent = "Kaydı Başlat/Durdur";
+    }
+};
+
+setupDummyStream(); // Test için kendi kameramızdan dummy stream
+</script>
+
+</body>
+</html>
