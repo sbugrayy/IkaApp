@@ -1,3 +1,5 @@
+# demo/webrtc_app.py
+
 import sys
 import os
 import datetime
@@ -6,23 +8,26 @@ from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage, QWebEngineD
 from PyQt5.QtCore import QUrl
 
 # ==================== AYARLAR ====================
-# Tarafsız, herkese açık bir sinyal sunucusu kullanacağız. ngrok'a gerek kalmadı.
-# Bu sunucu WebRTC örnekleri için yaygın olarak kullanılır.
-PUBLIC_SIGNALING_SERVER = '53eb26a886c6.ngrok-free.app'
-SAVE_DIR = os.path.abspath("./recordings")
+#
+# ngrok terminalindeki 'Forwarding' satırından kopyaladığınız adresi
+# aşağıdaki tırnakların arasına yazın. Sadece adresin kendisi olmalı.
+# Örnek: 'xxxxxxxx.ngrok-free.app'
+#
+SIGNALING_SERVER_IP = '53eb26a886c6.ngrok-free.app'
+#
 # ================================================
 
 # Bu satır, betiğin çalıştığı klasörün yolunu alır.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SAVE_DIR = os.path.join(os.path.dirname(BASE_DIR), "recordings") # Kayıt klasörünü ana dizine çıkaralım
 
 os.environ['QTWEBENGINE_REMOTE_DEBUGGING'] = "9223"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-
 class MainWindow(QMainWindow):
-    def __init__(self, signaling_server_url):
+    def __init__(self, signaling_ip):
         super().__init__()
-        self.signaling_server_url = signaling_server_url
+        self.signaling_ip = signaling_ip
         self.setWindowTitle("WebRTC Görüntü Aktarımı")
         self.resize(900, 750)
 
@@ -54,21 +59,22 @@ class MainWindow(QMainWindow):
             self.setWindowTitle("WebRTC - Alıcı")
         else:
             return
-        self.load_html_with_server_url(html_path)
+        self.load_html_with_ip(html_path)
         self.sender_btn.setEnabled(False)
         self.receiver_btn.setEnabled(False)
 
-    def load_html_with_server_url(self, html_path):
+    def load_html_with_ip(self, html_path):
         try:
             with open(html_path, 'r', encoding='utf-8') as f:
                 html_content = f.read()
 
-            # HTML'deki WebSocket adresini herkese açık sunucu adresiyle değiştiriyoruz.
-            html_content = html_content.replace('ws://SIGNALING_SERVER_IP:8765', self.signaling_server_url)
+            # HTML'deki "ws://" placeholder'ını "wss://" ve ngrok adresi ile değiştiriyoruz.
+            html_content = html_content.replace('ws://SIGNALING_SERVER_IP:8765', f'wss://{self.signaling_ip}')
 
             base_url = QUrl.fromLocalFile(os.path.dirname(html_path) + os.path.sep)
             self.view.setHtml(html_content, baseUrl=base_url)
-            print(f"'{os.path.basename(html_path)}' yüklendi. Sinyal sunucusu: {self.signaling_server_url}")
+            print(f"'{os.path.basename(html_path)}' yüklendi. Sinyal sunucusu: wss://{self.signaling_ip}")
+
         except FileNotFoundError:
             self.view.setHtml(f"<h2>Hata</h2><p>HTML dosyası bulunamadı: {html_path}</p>")
 
@@ -90,9 +96,8 @@ class MainWindow(QMainWindow):
         download.accept()
         download.finished.connect(lambda: print(f"[OK] Kayıt tamamlandı: {final_name}"))
 
-
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    win = MainWindow(signaling_server_url=PUBLIC_SIGNALING_SERVER)
+    win = MainWindow(signaling_ip=SIGNALING_SERVER_IP)
     win.show()
     sys.exit(app.exec_())
