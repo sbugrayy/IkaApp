@@ -12,7 +12,7 @@ from PyQt5.QtCore import QUrl
 # Sinyal sunucusunun IP adresini otomatik al veya elle gir.
 # Başka bir bilgisayara bağlanacaksanız, sunucuyu çalıştıran
 # bilgisayarın IP adresini buraya yazın. Örn: '192.168.1.42'
-SIGNALING_SERVER_IP = 'auto'
+SIGNALING_SERVER_IP = '53eb26a886c6.ngrok-free.app/'
 SAVE_DIR = os.path.abspath("./recordings")
 # ================================================
 
@@ -86,21 +86,23 @@ class MainWindow(QMainWindow):
         self.receiver_btn.setEnabled(False)
 
     def load_html_with_ip(self, html_path):
-        """HTML dosyasını okur, sinyal sunucusu IP'sini içine yazar ve yükler."""
-        try:
-            with open(html_path, 'r', encoding='utf-8') as f:
-                html_content = f.read()
+        def load_html_with_ip(self, html_path):
+            """HTML dosyasını okur, sinyal sunucusu IP'sini içine yazar ve yükler."""
+            try:
+                with open(html_path, 'r', encoding='utf-8') as f:
+                    html_content = f.read()
 
-            # IP adresini HTML içeriğindeki yer tutucu ile değiştir
-            html_content = html_content.replace('SIGNALING_SERVER_IP', self.signaling_ip)
+                # HTML'deki "ws://SIGNALING_SERVER_IP:8765" metnini "ws://SENIN-NGROK-ADRESIN" ile değiştirir.
+                html_content = html_content.replace('ws://SIGNALING_SERVER_IP:8765', f'ws://{self.signaling_ip}')
 
-            # HTML'i yerel dosya yolunu baz alarak yükle (CSS/JS dosyaları için önemli)
-            base_url = QUrl.fromLocalFile(os.path.dirname(html_path) + os.path.sep)
-            self.view.setHtml(html_content, baseUrl=base_url)
-            print(f"'{os.path.basename(html_path)}' yüklendi. Sinyal sunucusu: {self.signaling_ip}")
+                # HTML'i yerel dosya yolunu baz alarak yükle (CSS/JS dosyaları için önemli)
+                base_url = QUrl.fromLocalFile(os.path.dirname(html_path) + os.path.sep)
+                self.view.setHtml(html_content, baseUrl=base_url)
+                # Bu print satırını da güncelleyelim ki ne yaptığımızı görelim
+                print(f"'{os.path.basename(html_path)}' yüklendi. Sinyal sunucusu: ws://{self.signaling_ip}")
 
-        except FileNotFoundError:
-            self.view.setHtml(f"<h2>Hata</h2><p>HTML dosyası bulunamadı: {html_path}</p>")
+            except FileNotFoundError:
+                self.view.setHtml(f"<h2>Hata</h2><p>HTML dosyası bulunamadı: {html_path}</p>")
 
     def on_feature_permission(self, url, feature):
         """Kamera ve mikrofon gibi medya izinlerini otomatik olarak verir."""
