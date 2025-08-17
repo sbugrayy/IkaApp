@@ -46,6 +46,8 @@ const videoContainerDiv = document.getElementById('video-container-div');
 let pc;
 let ws;
 let mediaRecorder, chunks=[];
+// HERKESE AÇIK GÜVENİLİR SİNYAL SUNUCUSU
+const SIGNALING_SERVER_URL = "wss://simple-webrtc-p2p-signaling.glitch.me";
 
 const iceServers = {
     iceServers: [
@@ -61,7 +63,7 @@ joinBtn.onclick = () => {
         return;
     }
 
-    ws = new WebSocket("ws://SIGNALING_SERVER_IP:8765");
+    ws = new WebSocket(SIGNALING_SERVER_URL);
 
     ws.onopen = () => {
         console.log("RECEIVER: WebSocket bağlantısı açıldı.");
@@ -74,27 +76,33 @@ joinBtn.onclick = () => {
     ws.onclose = () => console.error("RECEIVER: WebSocket bağlantısı kapandı!");
     ws.onerror = (err) => console.error("RECEIVER: WebSocket hatası:", err);
 
-    ws.onmessage = async msg => {
+    ws.onmessage = async (msg) => {
         const data = JSON.parse(msg.data);
-        if(data.sdp){
-            await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-            if(data.sdp.type==="offer"){
-                const answer = await pc.createAnswer();
-                await pc.setLocalDescription(answer);
-                ws.send(JSON.stringify({sdp:pc.localDescription}));
+        if (data.room === roomName) {
+            if(data.sdp){
+                await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                if(data.sdp.type==="offer"){
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    sendToServer({sdp:pc.localDescription});
+                }
             }
-        }
-        if(data.candidate){
-            await pc.addIceCandidate(data.candidate);
+            if(data.candidate){
+                await pc.addIceCandidate(data.candidate);
+            }
         }
     };
 };
+
+function sendToServer(msg) {
+    msg.room = roomInput.value;
+    ws.send(JSON.stringify(msg));
+}
 
 async function init() {
     pc = new RTCPeerConnection(iceServers);
     pc.oniceconnectionstatechange = () => {
         iceStatusEl.textContent = pc.iceConnectionState;
-        console.log(`RECEIVER: ICE durumu: ${pc.iceConnectionState}`);
     };
 
     pc.ontrack = e => {
@@ -103,12 +111,8 @@ async function init() {
         btn.disabled = false;
     };
 
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localVideo.srcObject = stream;
-    } catch (err) {
-        console.error("RECEIVER: Yerel medya hatası:", err);
-    }
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localVideo.srcObject = stream;
 }
 </script>
 </body>
