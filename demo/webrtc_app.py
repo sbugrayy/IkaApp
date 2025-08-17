@@ -1,4 +1,4 @@
-# demo/main_app.py
+# demo/webrtc_app.py
 
 import sys
 import os
@@ -9,12 +9,15 @@ from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage, QWebEngineD
 from PyQt5.QtCore import QUrl
 
 # ==================== AYARLAR ====================
-# Sinyal sunucusunun IP adresini otomatik al veya elle gir.
-# Başka bir bilgisayara bağlanacaksanız, sunucuyu çalıştıran
-# bilgisayarın IP adresini buraya yazın. Örn: '192.168.1.42'
-SIGNALING_SERVER_IP = '53eb26a886c6.ngrok-free.app/'
+# ngrok'un size verdiği adresi buraya tırnak içinde yazın.
+# ÖNEMLİ: başına "ws://" veya "http://" koymayın!
+SIGNALING_SERVER_IP = '53eb26a886c6.ngrok-free.app'
 SAVE_DIR = os.path.abspath("./recordings")
 # ================================================
+
+# Bu satır, betiğin çalıştığı klasörün yolunu alır.
+# Bu sayede HTML dosyalarını her zaman doğru yerde buluruz.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 os.environ['QTWEBENGINE_REMOTE_DEBUGGING'] = "9223"
 os.makedirs(SAVE_DIR, exist_ok=True)
@@ -72,10 +75,12 @@ class MainWindow(QMainWindow):
     def load_mode(self, mode):
         """Seçilen moda göre ilgili HTML dosyasını yükler."""
         if mode == "sender":
-            html_path = os.path.abspath("sender.html")
+            # DÜZELTİLMİŞ DOSYA YOLU
+            html_path = os.path.join(BASE_DIR, "sender.html")
             self.setWindowTitle("WebRTC - Gönderici")
         elif mode == "receiver":
-            html_path = os.path.abspath("receiver.html")
+            # DÜZELTİLMİŞ DOSYA YOLU
+            html_path = os.path.join(BASE_DIR, "receiver.html")
             self.setWindowTitle("WebRTC - Alıcı")
         else:
             return
@@ -86,23 +91,21 @@ class MainWindow(QMainWindow):
         self.receiver_btn.setEnabled(False)
 
     def load_html_with_ip(self, html_path):
-        def load_html_with_ip(self, html_path):
-            """HTML dosyasını okur, sinyal sunucusu IP'sini içine yazar ve yükler."""
-            try:
-                with open(html_path, 'r', encoding='utf-8') as f:
-                    html_content = f.read()
+        """HTML dosyasını okur, sinyal sunucusu IP'sini içine yazar ve yükler."""
+        try:
+            with open(html_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
 
-                # HTML'deki "ws://SIGNALING_SERVER_IP:8765" metnini "ws://SENIN-NGROK-ADRESIN" ile değiştirir.
-                html_content = html_content.replace('ws://SIGNALING_SERVER_IP:8765', f'ws://{self.signaling_ip}')
+            # ngrok adresi için DÜZELTİLMİŞ değiştirme satırı
+            html_content = html_content.replace('ws://SIGNALING_SERVER_IP:8765', f'ws://{self.signaling_ip}')
 
-                # HTML'i yerel dosya yolunu baz alarak yükle (CSS/JS dosyaları için önemli)
-                base_url = QUrl.fromLocalFile(os.path.dirname(html_path) + os.path.sep)
-                self.view.setHtml(html_content, baseUrl=base_url)
-                # Bu print satırını da güncelleyelim ki ne yaptığımızı görelim
-                print(f"'{os.path.basename(html_path)}' yüklendi. Sinyal sunucusu: ws://{self.signaling_ip}")
+            # HTML'i yerel dosya yolunu baz alarak yükle (CSS/JS dosyaları için önemli)
+            base_url = QUrl.fromLocalFile(os.path.dirname(html_path) + os.path.sep)
+            self.view.setHtml(html_content, baseUrl=base_url)
+            print(f"'{os.path.basename(html_path)}' yüklendi. Sinyal sunucusu: ws://{self.signaling_ip}")
 
-            except FileNotFoundError:
-                self.view.setHtml(f"<h2>Hata</h2><p>HTML dosyası bulunamadı: {html_path}</p>")
+        except FileNotFoundError:
+            self.view.setHtml(f"<h2>Hata</h2><p>HTML dosyası bulunamadı: {html_path}</p>")
 
     def on_feature_permission(self, url, feature):
         """Kamera ve mikrofon gibi medya izinlerini otomatik olarak verir."""
@@ -132,8 +135,9 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
 
     server_ip = SIGNALING_SERVER_IP
-    if server_ip == 'auto':
-        server_ip = get_local_ip()
+    # 'auto' ayarını artık ngrok için kullanmadığımızdan bu kontrolü basitleştirebiliriz.
+    # if server_ip == 'auto':
+    #     server_ip = get_local_ip()
 
     print(f"Sinyal Sunucusu için kullanılacak IP Adresi: {server_ip}")
 
