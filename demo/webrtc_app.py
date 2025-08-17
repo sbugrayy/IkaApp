@@ -97,7 +97,7 @@ class MainWindow(QMainWindow):
                 html_content = f.read()
 
             # ngrok adresi için DÜZELTİLMİŞ değiştirme satırı
-            html_content = html_content.replace('ws://SIGNALING_SERVER_IP:8765', f'ws://{self.signaling_ip}')
+            html_content = html_content.replace('ws://SIGNALING_SERVER_IP:8765', f'wss://{self.signaling_ip}')
 
             # HTML'i yerel dosya yolunu baz alarak yükle (CSS/JS dosyaları için önemli)
             base_url = QUrl.fromLocalFile(os.path.dirname(html_path) + os.path.sep)
