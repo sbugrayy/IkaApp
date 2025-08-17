@@ -8,7 +8,7 @@ from PyQt5.QtCore import QUrl
 # ==================== AYARLAR ====================
 # Tarafsız, herkese açık bir sinyal sunucusu kullanacağız. ngrok'a gerek kalmadı.
 # Bu sunucu WebRTC örnekleri için yaygın olarak kullanılır.
-PUBLIC_SIGNALING_SERVER = 'wss://simple-webrtc-p2p-signaling.glitch.me'
+PUBLIC_SIGNALING_SERVER = '53eb26a886c6.ngrok-free.app'
 SAVE_DIR = os.path.abspath("./recordings")
 # ================================================
 

@@ -5,15 +5,19 @@
 <title>Receiver</title>
 <style>
     body { font-family: sans-serif; }
-    .video-container { display: flex; gap: 20px; }
+    .video-container { display: none; gap: 20px; }
     video { width: 48%; max-width: 100%; border: 1px solid #ccc; }
     h3 { margin-bottom: 5px; }
 </style>
 </head>
 <body>
 <h2>Alıcı WebRTC</h2>
+<div id="room-selection">
+    <input type="text" id="room-input" placeholder="Oda Adı Girin">
+    <button id="join-btn">Odaya Katıl</button>
+</div>
 
-<div class="video-container">
+<div id="video-container-div" class="video-container">
     <div>
         <h3>Uzak Görüntü (Sender)</h3>
         <video id="remoteVideo" autoplay playsinline></video>
@@ -29,111 +33,83 @@
 <p id="status"></p>
 
 <script>
-console.log("RECEIVER: Script başladı.");
-
-// Elementleri seç
 const iceStatusEl = document.getElementById('ice-status');
 const remoteVideo = document.getElementById("remoteVideo");
 const localVideo = document.getElementById("localVideo");
 const btn = document.getElementById("recordBtn");
 const statusEl = document.getElementById("status");
+const roomInput = document.getElementById('room-input');
+const joinBtn = document.getElementById('join-btn');
+const roomSelectionDiv = document.getElementById('room-selection');
+const videoContainerDiv = document.getElementById('video-container-div');
 
-// WebRTC ve WebSocket Değişkenleri
-// GÜNCELLENMİŞ ICE SUNUCULARI (STUN + TURN)
+let pc;
+let ws;
+let mediaRecorder, chunks=[];
+
 const iceServers = {
     iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
-        {
-            urls: "turn:openrelay.metered.ca:80",
-            username: "openrelayproject",
-            credential: "openrelayproject",
-        },
+        { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
     ],
 };
-let pc = new RTCPeerConnection(iceServers);
-// ----
 
-let ws = new WebSocket("ws://SIGNALING_SERVER_IP:8765"); // Bu satıra Python dokunacak
-let mediaRecorder, chunks=[];
-
-// --- 1. Yerel Kamerayı Başlat ---
-async function startLocalMedia() {
-    try {
-        console.log("RECEIVER: Yerel kamera isteniyor...");
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localVideo.srcObject = stream;
-        console.log("RECEIVER: Yerel medya akışı başarıyla alındı.");
-    } catch (err) {
-        console.error("RECEIVER: Yerel medya hatası:", err);
-        alert("Kamera veya mikrofona erişilemedi!");
-    }
-}
-startLocalMedia(); // Sayfa yüklenir yüklenmez kendi kameramızı açıyoruz
-
-// --- 2. WebRTC ve Sinyalleşme Mantığı ---
-ws.onopen = () => console.log("RECEIVER: Sinyal sunucusuna WebSocket bağlantısı açıldı.");
-
-pc.oniceconnectionstatechange = () => {
-    const state = pc.iceConnectionState;
-    console.log(`RECEIVER: ICE bağlantı durumu değişti: ${state}`);
-    iceStatusEl.textContent = state;
-    if (state === 'connected' || state === 'completed') {
-        console.log('RECEIVER: Bağlantı başarıyla kuruldu!');
-    }
-};
-
-pc.ontrack = e => {
-    console.log("RECEIVER: Uzak medya akışı (track) alındı! Videoya ekleniyor.");
-    remoteVideo.srcObject = e.streams[0];
-    statusEl.textContent="Remote stream geldi.";
-    btn.disabled = false; // Görüntü gelince kayıt butonunu aktif et
-};
-
-pc.onicecandidate = e => {
-    if(e.candidate) ws.send(JSON.stringify({candidate:e.candidate}));
-};
-
-ws.onmessage = async msg => {
-    const data = JSON.parse(msg.data);
-    if(data.sdp){
-        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-        if(data.sdp.type==="offer"){
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            ws.send(JSON.stringify({sdp:pc.localDescription}));
-        }
-    }
-    if(data.candidate){
-        await pc.addIceCandidate(data.candidate);
-    }
-};
-
-// --- 3. Kayıt Mantığı ---
-btn.onclick = () => {
-    if(!remoteVideo.srcObject) {
-        statusEl.textContent = "Kaydedilecek bir görüntü akışı yok!";
+joinBtn.onclick = () => {
+    const roomName = roomInput.value;
+    if (!roomName) {
+        alert("Lütfen bir oda adı girin.");
         return;
     }
-    if(!mediaRecorder || mediaRecorder.state === "inactive"){
-        chunks=[];
-        mediaRecorder = new MediaRecorder(remoteVideo.srcObject);
-        mediaRecorder.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
-        mediaRecorder.onstop=()=>{
-            const blob=new Blob(chunks,{type:"video/webm"});
-            const a=document.createElement("a");
-            a.href=URL.createObjectURL(blob);
-            a.download="remote_stream.webm";
-            a.click();
-            statusEl.textContent="Kayıt tamamlandı";
-        };
-        mediaRecorder.start(1000);
-        statusEl.textContent="Kayıt başladı...";
-        btn.textContent="Kaydı Durdur";
-    } else {
-        mediaRecorder.stop();
-        btn.textContent="Uzak Görüntüyü Kaydet";
-    }
+
+    ws = new WebSocket("ws://SIGNALING_SERVER_IP:8765");
+
+    ws.onopen = () => {
+        console.log("RECEIVER: WebSocket bağlantısı açıldı.");
+        ws.send(JSON.stringify({ type: 'join', room: roomName }));
+        roomSelectionDiv.style.display = 'none';
+        videoContainerDiv.style.display = 'flex';
+        init();
+    };
+
+    ws.onclose = () => console.error("RECEIVER: WebSocket bağlantısı kapandı!");
+    ws.onerror = (err) => console.error("RECEIVER: WebSocket hatası:", err);
+
+    ws.onmessage = async msg => {
+        const data = JSON.parse(msg.data);
+        if(data.sdp){
+            await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            if(data.sdp.type==="offer"){
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                ws.send(JSON.stringify({sdp:pc.localDescription}));
+            }
+        }
+        if(data.candidate){
+            await pc.addIceCandidate(data.candidate);
+        }
+    };
 };
+
+async function init() {
+    pc = new RTCPeerConnection(iceServers);
+    pc.oniceconnectionstatechange = () => {
+        iceStatusEl.textContent = pc.iceConnectionState;
+        console.log(`RECEIVER: ICE durumu: ${pc.iceConnectionState}`);
+    };
+
+    pc.ontrack = e => {
+        remoteVideo.srcObject = e.streams[0];
+        statusEl.textContent="Remote stream geldi.";
+        btn.disabled = false;
+    };
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localVideo.srcObject = stream;
+    } catch (err) {
+        console.error("RECEIVER: Yerel medya hatası:", err);
+    }
+}
 </script>
 </body>
 </html>
