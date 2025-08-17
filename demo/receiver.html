@@ -39,7 +39,20 @@ const btn = document.getElementById("recordBtn");
 const statusEl = document.getElementById("status");
 
 // WebRTC ve WebSocket Değişkenleri
-let pc = new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
+// GÜNCELLENMİŞ ICE SUNUCULARI (STUN + TURN)
+const iceServers = {
+    iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        {
+            urls: "turn:openrelay.metered.ca:80",
+            username: "openrelayproject",
+            credential: "openrelayproject",
+        },
+    ],
+};
+let pc = new RTCPeerConnection(iceServers);
+// ----
+
 let ws = new WebSocket("ws://SIGNALING_SERVER_IP:8765"); // Bu satıra Python dokunacak
 let mediaRecorder, chunks=[];
 
