@@ -22,8 +22,6 @@ const roomSelectionDiv = document.getElementById('room-selection');
 
 let pc;
 let ws;
-// HERKESE AÇIK GÜVENİLİR SİNYAL SUNUCUSU
-const SIGNALING_SERVER_URL = "wss://simple-webrtc-p2p-signaling.glitch.me";
 
 const iceServers = {
     iceServers: [
@@ -39,11 +37,10 @@ joinBtn.onclick = () => {
         return;
     }
 
-    ws = new WebSocket(SIGNALING_SERVER_URL);
+    ws = new WebSocket("ws://SIGNALING_SERVER_IP:8765");
 
     ws.onopen = () => {
         console.log("SENDER: WebSocket bağlantısı açıldı.");
-        // Sunucuya "ben bu odaya katıldım" mesajı gönderiyoruz.
         ws.send(JSON.stringify({ type: 'join', room: roomName }));
         roomSelectionDiv.style.display = 'none';
         videoEl.style.display = 'block';
@@ -54,44 +51,41 @@ joinBtn.onclick = () => {
     ws.onerror = (err) => console.error("SENDER: WebSocket hatası:", err);
 
     ws.onmessage = async (msg) => {
+        console.log("SENDER: Sunucudan mesaj alındı:", msg.data);
         const data = JSON.parse(msg.data);
-        // Gelen mesajların bizim odamız için olduğundan emin olalım (sunucu protokolü gereği)
-        if (data.room === roomName) {
-            if(data.sdp){
-                await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-            }
-            if(data.candidate){
-                await pc.addIceCandidate(data.candidate);
-            }
+        if(data.sdp){
+            await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        }
+        if(data.candidate){
+            await pc.addIceCandidate(data.candidate);
         }
     };
 };
-
-// Mesajları gönderirken oda adını da ekliyoruz
-function sendToServer(msg) {
-    msg.room = roomInput.value;
-    ws.send(JSON.stringify(msg));
-}
 
 async function init() {
     pc = new RTCPeerConnection(iceServers);
     pc.oniceconnectionstatechange = () => {
         iceStatusEl.textContent = pc.iceConnectionState;
+        console.log(`SENDER: ICE durumu: ${pc.iceConnectionState}`);
     };
 
-    const stream = await navigator.mediaDevices.getUserMedia({video:true,audio:true});
-    videoEl.srcObject = stream;
-    stream.getTracks().forEach(t => pc.addTrack(t, stream));
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+        videoEl.srcObject = stream;
+        stream.getTracks().forEach(t => pc.addTrack(t, stream));
 
-    pc.onicecandidate = e => {
-        if(e.candidate) {
-            sendToServer({candidate:e.candidate});
-        }
-    };
+        pc.onicecandidate = e => {
+            if(e.candidate) {
+                ws.send(JSON.stringify({candidate:e.candidate}));
+            }
+        };
 
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    sendToServer({sdp:pc.localDescription});
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        ws.send(JSON.stringify({sdp:pc.localDescription}));
+    } catch (err) {
+        console.error("SENDER: init() hatası:", err);
+    }
 }
 </script>
 </body>

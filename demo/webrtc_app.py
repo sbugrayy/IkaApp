@@ -1,17 +1,33 @@
+# demo/webrtc_app.py
+
 import sys
 import os
+import datetime
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage, QWebEngineDownloadItem, QWebEngineSettings
 from PyQt5.QtCore import QUrl
 
+# ==================== AYARLAR ====================
+#
+# ngrok terminalindeki 'Forwarding' satırından kopyaladığınız adresi
+# aşağıdaki tırnakların arasına yazın. Sadece adresin kendisi olmalı.
+# Örnek: 'xxxxxxxx.ngrok-free.app'
+#
+SIGNALING_SERVER_IP = '53eb26a886c6.ngrok-free.app'
+#
+# ================================================
+
+# Bu satır, betiğin çalıştığı klasörün yolunu alır.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SAVE_DIR = os.path.join(os.path.dirname(BASE_DIR), "recordings")
+SAVE_DIR = os.path.join(os.path.dirname(BASE_DIR), "recordings") # Kayıt klasörünü ana dizine çıkaralım
+
+os.environ['QTWEBENGINE_REMOTE_DEBUGGING'] = "9223"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, signaling_ip):
         super().__init__()
+        self.signaling_ip = signaling_ip
         self.setWindowTitle("WebRTC Görüntü Aktarımı")
         self.resize(900, 750)
 
@@ -23,6 +39,8 @@ class MainWindow(QMainWindow):
         self.button_layout.addWidget(self.sender_btn)
         self.button_layout.addWidget(self.receiver_btn)
         self.view = QWebEngineView()
+        self.view.settings().setAttribute(QWebEngineSettings.JavascriptCanOpenWindows, True)
+        self.view.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
         self.main_layout.addLayout(self.button_layout)
         self.main_layout.addWidget(self.view)
         self.setCentralWidget(self.central_widget)
@@ -35,27 +53,51 @@ class MainWindow(QMainWindow):
     def load_mode(self, mode):
         if mode == "sender":
             html_path = os.path.join(BASE_DIR, "sender.html")
-        else:  # receiver
+            self.setWindowTitle("WebRTC - Gönderici")
+        elif mode == "receiver":
             html_path = os.path.join(BASE_DIR, "receiver.html")
-
-        self.view.load(QUrl.fromLocalFile(html_path))
+            self.setWindowTitle("WebRTC - Alıcı")
+        else:
+            return
+        self.load_html_with_ip(html_path)
         self.sender_btn.setEnabled(False)
         self.receiver_btn.setEnabled(False)
 
+    def load_html_with_ip(self, html_path):
+        try:
+            with open(html_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+
+            # HTML'deki "ws://" placeholder'ını "wss://" ve ngrok adresi ile değiştiriyoruz.
+            html_content = html_content.replace('ws://SIGNALING_SERVER_IP:8765', f'wss://{self.signaling_ip}')
+
+            base_url = QUrl.fromLocalFile(os.path.dirname(html_path) + os.path.sep)
+            self.view.setHtml(html_content, baseUrl=base_url)
+            print(f"'{os.path.basename(html_path)}' yüklendi. Sinyal sunucusu: wss://{self.signaling_ip}")
+
+        except FileNotFoundError:
+            self.view.setHtml(f"<h2>Hata</h2><p>HTML dosyası bulunamadı: {html_path}</p>")
+
     def on_feature_permission(self, url, feature):
-        if feature in {QWebEnginePage.MediaAudioCapture, QWebEnginePage.MediaVideoCapture,
-                       QWebEnginePage.MediaAudioVideoCapture}:
+        allowed_features = {
+            QWebEnginePage.MediaAudioCapture, QWebEnginePage.MediaVideoCapture, QWebEnginePage.MediaAudioVideoCapture,
+        }
+        if feature in allowed_features:
             self.view.page().setFeaturePermission(url, feature, QWebEnginePage.PermissionGrantedByUser)
 
     def on_download_requested(self, download: QWebEngineDownloadItem):
-        final_name = os.path.join(SAVE_DIR, "kayit.webm")  # Basit bir isim verelim
+        base_name = os.path.basename(download.path()) or "remote_stream.webm"
+        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        name, ext = os.path.splitext(base_name)
+        if not ext: ext = ".webm"
+        final_name = os.path.join(SAVE_DIR, f"{name}_{stamp}{ext}")
+        print(f"Kayıt talebi alındı. Dosya kaydediliyor: {final_name}")
         download.setPath(final_name)
         download.accept()
-        download.finished.connect(lambda: print(f"Kayıt tamamlandı: {final_name}"))
-
+        download.finished.connect(lambda: print(f"[OK] Kayıt tamamlandı: {final_name}"))
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    win = MainWindow()
+    win = MainWindow(signaling_ip=SIGNALING_SERVER_IP)
     win.show()
     sys.exit(app.exec_())
