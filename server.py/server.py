@@ -1,77 +1,59 @@
 import nest_asyncio
+
 nest_asyncio.apply()
 
 from quart import Quart, request, jsonify, send_from_directory
 from quart_cors import cors
-from aiortc import RTCPeerConnection, RTCSessionDescription, RTCIceCandidate
+import json
 
 app = Quart(__name__, static_folder=".")
 app = cors(app, allow_origin="*")
 
-pcs = {}  
+room_data = {
+    "offer": None,
+    "answer": None,
+    "candidates": []
+}
 
 @app.route("/")
 async def index():
     return await send_from_directory(".", "webrtc_remote_recorder.html")
 
-@app.route("/offer", methods=["POST"])
-async def offer():
-    params = await request.get_json()
-    peer_id = params.get("peer_id")
-    if not peer_id:
-        return jsonify({"error": "peer_id gerekli"}), 400
+@app.route("/data", methods=["GET", "POST"])
+async def data():
+    global room_data
 
-    if peer_id not in pcs:
-        pc = RTCPeerConnection()
-        pc.candidate_buffer = []
-        pcs[peer_id] = pc
+    if request.method == "POST":
+        payload = await request.get_json()
+        if payload.get("type") == "offer":
+            room_data = {"offer": payload, "answer": None, "candidates": []}
+            print("Offer alındı ve saklandı.")
+        elif payload.get("type") == "answer":
+            room_data["answer"] = payload
+            print("Answer alındı ve saklandı.")
+        elif payload.get("candidate"):
+            room_data["candidates"].append(payload)
+            print("Candidate alındı ve saklandı.")
+        return jsonify({"status": "ok"})
 
-        @pc.on("track")
-        def on_track(track):
-            print(f"{peer_id} için yeni track geldi:", track.kind)
+    elif request.method == "GET":
+        return jsonify(room_data)
 
-    else:
-        pc = pcs[peer_id]
-
-   
-    if "sdp" in params and "type" in params:
-        offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
-        await pc.setRemoteDescription(offer)
-
-       
-        for c in pc.candidate_buffer:
-            await pc.addIceCandidate(c)
-        pc.candidate_buffer = []
-
-        answer = await pc.createAnswer()
-        await pc.setLocalDescription(answer)
-        return jsonify({
-            "sdp": pc.localDescription.sdp,
-            "type": pc.localDescription.type
-        })
-
-    
-    elif "candidate" in params:
-        candidate = params["candidate"]
-        ice_candidate = RTCIceCandidate(
-            sdpMid=candidate["sdpMid"],
-            sdpMLineIndex=candidate["sdpMLineIndex"],
-            candidate=candidate["candidate"]
-        )
-        if not pc.remoteDescription:
-            pc.candidate_buffer.append(ice_candidate)
-        else:
-            await pc.addIceCandidate(ice_candidate)
-        return jsonify({"status": "candidate eklendi"})
-
-    return jsonify({"status": "bilinmeyen istek"}), 400
 
 if __name__ == "__main__":
     import uvicorn
+
     host = "0.0.0.0"
     port = 5000
-    print(f"Server çalışıyor: http://{host}:{port}")
-    uvicorn.run(app, host=host, port=port)
 
+    ssl_keyfile = "key.pem"
+    ssl_certfile = "cert.pem"
 
-
+    print(f"Server HTTPS olarak çalışıyor: https://{host}:{port}")
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        ssl_keyfile=ssl_keyfile,
+        ssl_certfile=ssl_certfile
+    )
