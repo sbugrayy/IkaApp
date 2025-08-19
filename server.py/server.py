@@ -4,7 +4,6 @@ nest_asyncio.apply()
 
 from quart import Quart, request, jsonify, send_from_directory
 from quart_cors import cors
-import json
 
 app = Quart(__name__, static_folder=".")
 app = cors(app, allow_origin="*")

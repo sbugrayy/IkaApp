@@ -36,9 +36,6 @@ let pc = new RTCPeerConnection({
 let mediaRecorder;
 let chunks = [];
 
-// --- YENİ SİNYALLEŞME MANTIĞI ---
-
-// Bu istemcinin bir offer mı yoksa answer mı oluşturacağını belirler
 let isOfferer = false;
 let remoteDescriptionSet = false;
 
@@ -50,12 +47,10 @@ async function sendData(data) {
     });
 }
 
-// Sunucudan periyodik olarak veri çek
 setInterval(async () => {
     const response = await fetch("/data");
     const data = await response.json();
 
-    // Eğer biz offer oluşturmadıysak ve sunucuda bir offer varsa, onu alıp answer oluşturalım
     if (!isOfferer && data.offer && !remoteDescriptionSet) {
         statusEl.textContent = "Teklif (Offer) alındı, cevap (Answer) oluşturuluyor...";
         await pc.setRemoteDescription(data.offer);
@@ -66,14 +61,12 @@ setInterval(async () => {
         statusEl.textContent = "Cevap (Answer) gönderildi.";
     }
 
-    // Eğer biz offer oluşturduysak ve sunucuda bir answer varsa, onu alalım
     if (isOfferer && data.answer && !remoteDescriptionSet) {
         statusEl.textContent = "Cevap (Answer) alındı.";
         await pc.setRemoteDescription(data.answer);
         remoteDescriptionSet = true;
     }
 
-    // Sunucudaki ICE adaylarını işle
     if(data.candidates && remoteDescriptionSet){
         for(const candidate of data.candidates){
              try {
