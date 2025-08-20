@@ -6,6 +6,7 @@ import sys
 from typing import Optional, Dict, Any, List
 
 from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc.rtcconfiguration import RTCConfiguration, RTCIceServer
 from aiortc.sdp import candidate_from_sdp, candidate_to_sdp
 from aiortc.contrib.media import MediaPlayer
 import websockets
@@ -14,22 +15,17 @@ import websockets
 logging.basicConfig(level=logging.INFO)
 
 
-def build_ice_servers(stun_urls: List[str], turn_url: Optional[str], turn_username: Optional[str], turn_password: Optional[str]) -> Dict[str, Any]:
-    ice_servers: List[Dict[str, Any]] = []
+def build_rtc_configuration(stun_urls: List[str], turn_url: Optional[str], turn_username: Optional[str], turn_password: Optional[str]) -> RTCConfiguration:
+    servers: List[RTCIceServer] = []
     if stun_urls:
-        ice_servers.append({"urls": stun_urls})
+        servers.append(RTCIceServer(urls=stun_urls))
     if turn_url:
-        turn_entry: Dict[str, Any] = {"urls": [turn_url]}
-        if turn_username:
-            turn_entry["username"] = turn_username
-        if turn_password:
-            turn_entry["credential"] = turn_password
-        ice_servers.append(turn_entry)
-    return {"iceServers": ice_servers}
+        servers.append(RTCIceServer(urls=[turn_url], username=turn_username, credential=turn_password))
+    return RTCConfiguration(iceServers=servers)
 
 
 async def run(room: str, signaling_url: str, stun_urls: List[str], turn_url: Optional[str], turn_username: Optional[str], turn_password: Optional[str], video: Optional[str], audio: Optional[str]):
-    pc = RTCPeerConnection(build_ice_servers(stun_urls, turn_url, turn_username, turn_password))
+    pc = RTCPeerConnection(configuration=build_rtc_configuration(stun_urls, turn_url, turn_username, turn_password))
 
     # Create capture from explicit sources or use synthetic test sources if none provided
     # Windows dshow examples:
