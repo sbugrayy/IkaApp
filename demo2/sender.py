@@ -2,9 +2,11 @@ import argparse
 import asyncio
 import json
 import logging
+import sys
 from typing import Optional, Dict, Any, List
 
 from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc.sdp import candidate_from_sdp, candidate_to_sdp
 from aiortc.contrib.media import MediaPlayer
 import websockets
 
@@ -29,20 +31,42 @@ def build_ice_servers(stun_urls: List[str], turn_url: Optional[str], turn_userna
 async def run(room: str, signaling_url: str, stun_urls: List[str], turn_url: Optional[str], turn_username: Optional[str], turn_password: Optional[str], video: Optional[str], audio: Optional[str]):
     pc = RTCPeerConnection(build_ice_servers(stun_urls, turn_url, turn_username, turn_password))
 
-    # Create capture from default devices or explicit sources
-    # For Windows camera via ffmpeg/dshow, you may pass: video="video=Integrated Camera" and audio="audio=Microphone (Realtek...)"
-    player = MediaPlayer(video, format=None) if video else MediaPlayer(None)
-    if audio and audio != "default":
-        # If explicit audio device provided, create a second player for audio-only and use its audio track
-        audio_player = MediaPlayer(audio, format=None)
-        if audio_player.audio:
-            pc.addTrack(audio_player.audio)
-    else:
-        if player.audio:
-            pc.addTrack(player.audio)
+    # Create capture from explicit sources or use synthetic test sources if none provided
+    # Windows dshow examples:
+    #   --video "video=Integrated Camera" --audio "audio=Microphone (Realtek ...)"
+    # Test sources:
+    #   --video test --audio test
 
-    if player.video:
-        pc.addTrack(player.video)
+    video_player: Optional[MediaPlayer] = None
+    audio_player: Optional[MediaPlayer] = None
+
+    if video:
+        if video == "test":
+            video_player = MediaPlayer('testsrc=size=1280x720:rate=30', format='lavfi')
+        else:
+            # If on Windows and value looks like a dshow device string, use format='dshow'
+            if sys.platform.startswith('win') and (video.startswith('video=') or video.startswith('audio=')):
+                video_player = MediaPlayer(video, format='dshow')
+            else:
+                video_player = MediaPlayer(video)
+    else:
+        # Default to a test video so we don't crash on None
+        video_player = MediaPlayer('testsrc=size=1280x720:rate=30', format='lavfi')
+
+    if audio:
+        if audio == "test":
+            audio_player = MediaPlayer('sine=frequency=440', format='lavfi')
+        else:
+            if sys.platform.startswith('win') and (audio.startswith('audio=') or audio.startswith('video=')):
+                audio_player = MediaPlayer(audio, format='dshow')
+            else:
+                audio_player = MediaPlayer(audio)
+    # else: no audio
+
+    if video_player and video_player.video:
+        pc.addTrack(video_player.video)
+    if audio_player and audio_player.audio:
+        pc.addTrack(audio_player.audio)
 
     async with websockets.connect(signaling_url) as ws:
         await ws.send(json.dumps({"type": "join", "room": room}))
@@ -61,7 +85,7 @@ async def run(room: str, signaling_url: str, stun_urls: List[str], turn_url: Opt
             if event.candidate:
                 await ws.send(json.dumps({
                     "type": "candidate",
-                    "candidate": event.candidate.to_sdp(),
+                    "candidate": candidate_to_sdp(event.candidate),
                     "sdpMid": event.candidate.sdp_mid,
                     "sdpMLineIndex": event.candidate.sdp_mline_index,
                 }))
@@ -74,16 +98,17 @@ async def run(room: str, signaling_url: str, stun_urls: List[str], turn_url: Opt
                 await pc.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="answer"))
 
             elif msg.get("type") == "candidate":
-                candidate = msg.get("candidate")
+                cand = msg.get("candidate")
                 sdp_mid = msg.get("sdpMid")
                 sdp_mline_index = msg.get("sdpMLineIndex")
-                payload = candidate if isinstance(candidate, dict) else {
-                    "candidate": candidate,
-                    "sdpMid": sdp_mid,
-                    "sdpMLineIndex": sdp_mline_index,
-                }
                 try:
-                    await pc.addIceCandidate(payload)
+                    if isinstance(cand, str):
+                        ice = candidate_from_sdp(cand)
+                        ice.sdpMid = sdp_mid
+                        ice.sdpMLineIndex = sdp_mline_index
+                        await pc.addIceCandidate(ice)
+                    else:
+                        await pc.addIceCandidate(cand)
                 except Exception:
                     pass
 

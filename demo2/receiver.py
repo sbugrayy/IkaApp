@@ -5,6 +5,7 @@ import logging
 from typing import Optional, Dict, Any, List
 
 from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc.sdp import candidate_from_sdp, candidate_to_sdp
 from aiortc.contrib.media import MediaBlackhole, MediaRecorder
 import websockets
 
@@ -48,7 +49,7 @@ async def run(room: str, signaling_url: str, stun_urls: List[str], turn_url: Opt
             if event.candidate:
                 await ws.send(json.dumps({
                     "type": "candidate",
-                    "candidate": event.candidate.to_sdp(),
+                    "candidate": candidate_to_sdp(event.candidate),
                     "sdpMid": event.candidate.sdp_mid,
                     "sdpMLineIndex": event.candidate.sdp_mline_index,
                 }))
@@ -69,16 +70,17 @@ async def run(room: str, signaling_url: str, stun_urls: List[str], turn_url: Opt
                 answer_sent = True
 
             elif msg.get("type") == "candidate":
-                candidate = msg.get("candidate")
+                cand = msg.get("candidate")
                 sdp_mid = msg.get("sdpMid")
                 sdp_mline_index = msg.get("sdpMLineIndex")
-                payload = candidate if isinstance(candidate, dict) else {
-                    "candidate": candidate,
-                    "sdpMid": sdp_mid,
-                    "sdpMLineIndex": sdp_mline_index,
-                }
                 try:
-                    await pc.addIceCandidate(payload)
+                    if isinstance(cand, str):
+                        ice = candidate_from_sdp(cand)
+                        ice.sdpMid = sdp_mid
+                        ice.sdpMLineIndex = sdp_mline_index
+                        await pc.addIceCandidate(ice)
+                    else:
+                        await pc.addIceCandidate(cand)
                 except Exception:
                     pass
 

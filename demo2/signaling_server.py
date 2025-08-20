@@ -9,10 +9,10 @@ import websockets
 logging.basicConfig(level=logging.INFO)
 
 # Room name -> set of websocket connections
-rooms: Dict[str, Set[websockets.WebSocketServerProtocol]] = {}
+rooms: Dict[str, Set[object]] = {}
 
 
-async def handler(websocket: websockets.WebSocketServerProtocol):
+async def handler(websocket):
     room_name = None
     try:
         # Expect first message to be a room join
