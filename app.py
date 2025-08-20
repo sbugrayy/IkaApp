@@ -15,7 +15,7 @@ class MainWindow(QMainWindow):
         # HTML indirme olayını yakala
         self.view.page().profile().downloadRequested.connect(self.on_download_requested)
 
-        html_path = os.path.abspath("webrtc_remote_recorder.html")
+        html_path = os.path.abspath("server.py/webrtc_remote_recorder.html")
         self.view.load(QUrl.fromLocalFile(html_path))
 
         self.setWindowTitle("WebRTC Remote Stream Kayıt")
