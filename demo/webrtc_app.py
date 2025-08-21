@@ -12,7 +12,7 @@ from PyQt5.QtCore import QUrl
 # Sinyal sunucusunun IP adresini otomatik al veya elle gir.
 # Başka bir bilgisayara bağlanacaksanız, sunucuyu çalıştıran
 # bilgisayarın IP adresini buraya yazın. Örn: '192.168.1.42'
-SIGNALING_SERVER_IP = '852a67a7ddb6.ngrok-free.app/'
+SIGNALING_SERVER_IP = 'wss://fece1b732014.ngrok-free.app'
 SAVE_DIR = os.path.abspath("./recordings")
 # ================================================
 
@@ -93,7 +93,7 @@ class MainWindow(QMainWindow):
                     html_content = f.read()
 
                 # HTML'deki "ws://SIGNALING_SERVER_IP:8765" metnini "ws://SENIN-NGROK-ADRESIN" ile değiştirir.
-                html_content = html_content.replace('ws://SIGNALING_SERVER_IP:8765', f'ws://{self.signaling_ip}')
+                html_content = html_content.replace('ws://SIGNALING_SERVER_IP:8765', self.signaling_ip)
 
                 # HTML'i yerel dosya yolunu baz alarak yükle (CSS/JS dosyaları için önemli)
                 base_url = QUrl.fromLocalFile(os.path.dirname(html_path) + os.path.sep)
