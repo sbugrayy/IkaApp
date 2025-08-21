@@ -1,0 +1,3 @@
+﻿quart
+quart-cors
+nest_asyncio

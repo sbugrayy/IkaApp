@@ -46,11 +46,9 @@ if __name__ == "__main__":
     ssl_keyfile = "key.pem"
     ssl_certfile = "cert.pem"
 
-    print(f"Server HTTPS olarak çalışıyor: https://{host}:{port}")
+    print(f"Server HTTP olarak çalışıyor: http://{host}:{port}")
     uvicorn.run(
         app,
         host=host,
-        port=port,
-        ssl_keyfile=ssl_keyfile,
-        ssl_certfile=ssl_certfile
+        port = port
     )
