@@ -37,20 +37,6 @@ async def data():
     elif request.method == "GET":
         return jsonify(room_data)
 
-if __name__ == "__main__":  
+if __name__ == "__main__":
     import uvicorn
-
-    host = "0.0.0.0"
-    port = 5000
-
-    ssl_keyfile = "key.pem"
-    ssl_certfile = "cert.pem"
-
-    print(f"Server HTTPS olarak çalışıyor: https://{host}:{port}")
-    uvicorn.run(
-        app,
-        host=host,
-        port=port,
-        ssl_keyfile=ssl_keyfile,
-        ssl_certfile=ssl_certfile
-    )
+    uvicorn.run(app, host="0.0.0.0", port=5000)
