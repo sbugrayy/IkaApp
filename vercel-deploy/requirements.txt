@@ -1,4 +1,0 @@
-quart
-quart-cors
-nest-asyncio
-uvicorn
