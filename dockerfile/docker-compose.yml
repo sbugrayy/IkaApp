@@ -1,30 +1,9 @@
-﻿version: '3.8'
+﻿version: "3.9"
 
 services:
-  webrtc_app:
+  app:
     build: .
     ports:
-      - "8080:5000"
+      - "5000:5000"
     volumes:
       - .:/app
-    command: python server.py
-    environment:
-      - PYTHONUNBUFFERED=1
-
-  coturn:
-    image: instrumentisto/coturn
-    ports:
-      - "3478:3478"
-      - "3478:3478/udp"
-      - "5349:5349"
-      - "5349:5349/udp"
-    command: >
-      --log-file=stdout
-      --realm=webrtc.local
-      --user=ffarmo:489624
-      --no-cli
-      --no-tls
-      --no-dtls
-      --fingerprint
-      --min-port=49152
-      --max-port=49200

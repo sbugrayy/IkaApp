@@ -1,3 +1,4 @@
 ﻿quart
 quart-cors
+uvicorn
 nest_asyncio

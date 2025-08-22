@@ -4,7 +4,7 @@ nest_asyncio.apply()
 from quart import Quart, request, jsonify, send_from_directory
 from quart_cors import cors
 
-app = Quart(__name__, static_folder=".")  
+app = Quart(__name__, static_folder=".")
 app = cors(app, allow_origin="*")
 
 room_data = {
@@ -37,18 +37,10 @@ async def data():
     elif request.method == "GET":
         return jsonify(room_data)
 
-if __name__ == "__main__":  
-    import uvicorn
-
-    host = "0.0.0.0"
-    port = 5000
-
-    ssl_keyfile = "key.pem"
-    ssl_certfile = "cert.pem"
-
-    print(f"Server HTTP olarak çalışıyor: http://{host}:{port}")
-    uvicorn.run(
-        app,
-        host=host,
-        port = port
+if __name__ == "__main__":
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        certfile="cert.pem",
+        keyfile="key.pem"
     )
