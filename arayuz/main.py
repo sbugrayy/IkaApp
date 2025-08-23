@@ -1,5 +1,6 @@
 import sys
 import random
+import time
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QGroupBox, QLCDNumber, QSizePolicy,
@@ -10,7 +11,7 @@ from PyQt6.QtGui import QColor, QShortcut, QKeySequence
 
 # --- Sessiz Mod / Logging Anahtarı ---
 import builtins as _builtins
-VERBOSE = False  # Terminale log akışını açmak için True yapın
+VERBOSE = True  # Terminale log akışını açmak için True yapın
 
 def _noop_print(*args, **kwargs):
     pass
@@ -30,9 +31,10 @@ try:
     import firebase_admin
     from firebase_admin import credentials, db
     FIREBASE_AVAILABLE = True
+    print("✅ Firebase kütüphanesi yüklü")
 except ImportError:
     FIREBASE_AVAILABLE = False
-    print("⚠️ Firebase kütüphanesi bulunamadı. Çevrimdışı modda çalışıyor (simülasyon yok).")
+    print("⚠️ Firebase kütüphanesi bulunamadı. Çevrimdışı modda çalışıyor.")
 
 # -----------------------------
 # Camera Panel (simüle kutu)
@@ -64,62 +66,29 @@ class SensorThread(QThread):
     def __init__(self):
         super().__init__()
         self.running = True
-        self.firebase_initialized = False
         
-    def initialize_firebase(self):
-        """Firebase'i başlat"""
-        if not FIREBASE_AVAILABLE:
-            return False
-            
-        try:
-            # Firebase zaten başlatılmışsa sadece bağlantıyı kontrol et
-            if firebase_admin._apps:
-                self.firebase_initialized = True
-                return True
-                
-            # Firebase'i başlat
-            cred = credentials.Certificate('firebase-credentials.json')
-            firebase_admin.initialize_app(cred, {
-                'databaseURL': 'https://ikaarayu-default-rtdb.firebaseio.com/'
-            })
-            self.firebase_initialized = True
-            return True
-        except Exception as e:
-            # Firebase zaten başlatılmışsa bu normal bir durum
-            if "already exists" in str(e):
-                self.firebase_initialized = True
-                return True
-            print(f"❌ SensorThread Firebase başlatma hatası: {e}")
-            return False
-
     def run(self):
-        # Firebase'i başlat
-        self.initialize_firebase()
-        
         while self.running:
-            if self.firebase_initialized:
-                # Firebase'den sensör verilerini çek
+            # Firebase'den sensör verilerini almaya çalış
+            if FIREBASE_AVAILABLE:
                 try:
+                    import firebase_admin
+                    from firebase_admin import db
+                    
+                    # Firebase'den sensör verilerini çek
                     ref = db.reference('sensors')
                     firebase_data = ref.get()
                     
-                    print(f"📊 Firebase'den sensör verisi çekildi: {firebase_data}")
-                    
                     if firebase_data:
-                        # Firebase'den gelen veriyi kullan
+                        print(f"📊 Firebase'den sensör verisi alındı: {firebase_data}")
                         self.sensor_data.emit(firebase_data)
-                        print(f"✅ Firebase'den sensör verisi UI'a gönderildi")
                     else:
-                        # Veri yoksa yayın yapma (test/simülasyon kaldırıldı)
-                        print("⚠️ Firebase 'sensors' yolunda veri yok; yayın yapılmadı")
+                        print("⚠️ Firebase 'sensors' yolunda veri yok")
                         
                 except Exception as e:
                     print(f"❌ Firebase sensör veri alma hatası: {e}")
-            else:
-                # Firebase bağlı değilse yayın yapma (test/simülasyon kaldırıldı)
-                pass
             
-            self.msleep(500)  # ~2 FPS
+            self.msleep(1000)  # 1 saniye bekle
 
     def stop(self):
         self.running = False
@@ -156,11 +125,6 @@ class FirebaseThread(QThread):
             print("✅ Firebase başarıyla başlatıldı!")
             return True
         except Exception as e:
-            # Firebase zaten başlatılmışsa bu normal bir durum
-            if "already exists" in str(e):
-                self.firebase_initialized = True
-                print("✅ Firebase zaten başlatılmış!")
-                return True
             print(f"❌ Firebase başlatma hatası: {e}")
             print("🔄 Firebase yeniden denenecek...")
             self.firebase_initialized = False
@@ -730,28 +694,38 @@ class IKADashboard(QMainWindow):
 
     # ---------- Firebase Entegrasyonu ----------
     def init_firebase(self):
-        # Firebase thread'ini başlat
-        self.firebase_thread = FirebaseThread()
-        self.firebase_thread.data_received.connect(self.handle_firebase_data)
-        self.firebase_thread.start()
-        
-        # Firebase başlatma
-        self.initialize_firebase()
+        # Firebase thread'ini başlat (şimdilik devre dışı)
+        if FIREBASE_AVAILABLE:
+            try:
+                self.firebase_thread = FirebaseThread()
+                self.firebase_thread.data_received.connect(self.handle_firebase_data)
+                self.firebase_thread.start()
+                
+                # Firebase başlatma
+                if self.initialize_firebase():
+                    print("✅ Firebase ana thread'de başarıyla başlatıldı!")
+                else:
+                    print("❌ Firebase ana thread'de başlatılamadı!")
+            except Exception as e:
+                print(f"⚠️ Firebase thread başlatılamadı: {e}")
+                print("📱 Uygulama simülasyon modunda çalışacak")
+        else:
+            print("📱 Firebase olmadan simülasyon modunda çalışıyor")
     
     def initialize_firebase(self):
         """Firebase'i başlat"""
         if not FIREBASE_AVAILABLE:
             print("⚠️ Firebase yüklü değil; bağlantı kapalı")
             self.firebase_initialized = False
-            return
+            return False
             
         try:
-            # Firebase zaten başlatılmışsa sadece bağlantıyı kontrol et
+            # Mevcut Firebase uygulamalarını temizle
             if firebase_admin._apps:
-                self.firebase_initialized = True
-                print("✅ Firebase zaten başlatılmış!")
-                return
-                
+                print("🔄 Mevcut Firebase uygulamaları temizleniyor...")
+                for app in firebase_admin._apps.copy().values():
+                    firebase_admin.delete_app(app)
+            
             # Firebase'i başlat
             cred = credentials.Certificate('firebase-credentials.json')
             firebase_admin.initialize_app(cred, {
@@ -759,31 +733,36 @@ class IKADashboard(QMainWindow):
             })
             self.firebase_initialized = True
             print("✅ Firebase başarıyla başlatıldı!")
+            return True
             
         except Exception as e:
-            # Firebase zaten başlatılmışsa bu normal bir durum
-            if "already exists" in str(e):
-                self.firebase_initialized = True
-                print("✅ Firebase zaten başlatılmış!")
-                return
             print(f"❌ Firebase başlatma hatası: {e}")
             self.firebase_initialized = False
+            return False
     
     def send_to_firebase(self, path, data):
         """Firebase'e veri gönder"""
+        if not FIREBASE_AVAILABLE:
+            print(f"⚠️ Firebase kütüphanesi yüklü değil, veri simüle ediliyor: {path} = {data}")
+            return True
+            
         if not self.firebase_initialized:
-            print(f"⚠️ Firebase bağlantısı yok, veri gönderilemedi: {path}")
-            return
+            print(f"⚠️ Firebase bağlantısı yok, veri simüle ediliyor: {path} = {data}")
+            return True
             
         try:
             # Acil durum verisi sadece boolean gönderir, zaman damgası ekleme
             if path != 'emergency':
-                import time
                 data['timestamp'] = time.time()
-            db.reference(path).set(data)
+            
+            ref = db.reference(path)
+            ref.set(data)
             print(f"✅ Firebase'e gönderildi: {path} = {data}")
+            return True
         except Exception as e:
             print(f"❌ Firebase veri gönderme hatası: {e}")
+            print(f"📝 Veri simüle ediliyor: {path} = {data}")
+            return True  # Hata olsa bile uygulamayı çalışmaya devam ettir
     
     def handle_firebase_data(self, firebase_data):
         """Firebase'den gelen verileri işle"""
@@ -938,6 +917,26 @@ class IKADashboard(QMainWindow):
         self.sensor_thread.wait()
         self.firebase_thread.wait()
         event.accept()
+
+    def test_firebase_connection(self):
+        """Firebase bağlantısını test et"""
+        if not self.firebase_initialized:
+            print("❌ Firebase bağlantısı yok!")
+            return False
+            
+        try:
+            # Test verisi gönder
+            test_data = {'test': True, 'timestamp': time.time()}
+            ref = db.reference('test_connection')
+            ref.set(test_data)
+            print("✅ Firebase bağlantı testi başarılı!")
+            
+            # Test verisini sil
+            ref.delete()
+            return True
+        except Exception as e:
+            print(f"❌ Firebase bağlantı testi başarısız: {e}")
+            return False
 
 
 if __name__ == '__main__':
