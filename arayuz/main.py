@@ -11,30 +11,20 @@ from PyQt6.QtGui import QColor, QShortcut, QKeySequence
 
 # --- Sessiz Mod / Logging Anahtarı ---
 import builtins as _builtins
-VERBOSE = True  # Terminale log akışını açmak için True yapın
 
 def _noop_print(*args, **kwargs):
     pass
 
-def set_verbose(flag: bool):
-    global print
-    if flag:
-        print = _builtins.print
-    else:
-        print = _noop_print
-
-# Varsayılan: sessiz
-set_verbose(VERBOSE)
+# Tüm print'leri sustur
+print = _noop_print
 
 # Firebase kütüphanelerini import edin (simülasyon modu)
 try:
     import firebase_admin
     from firebase_admin import credentials, db
     FIREBASE_AVAILABLE = True
-    print("✅ Firebase kütüphanesi yüklü")
 except ImportError:
     FIREBASE_AVAILABLE = False
-    print("⚠️ Firebase kütüphanesi bulunamadı. Çevrimdışı modda çalışıyor.")
 
 # -----------------------------
 # Camera Panel (simüle kutu)
@@ -58,7 +48,7 @@ class CameraPanel(QLabel):
         self.setGraphicsEffect(shadow)
 
 # -----------------------------
-# Sensör verisi üretici thread
+# Sensör verisi üretici thread (Firebase entegrasyonu ile)
 # -----------------------------
 class SensorThread(QThread):
     sensor_data = pyqtSignal(dict)
@@ -66,29 +56,30 @@ class SensorThread(QThread):
     def __init__(self):
         super().__init__()
         self.running = True
+        self.firebase_initialized = False
         
     def run(self):
         while self.running:
             # Firebase'den sensör verilerini almaya çalış
-            if FIREBASE_AVAILABLE:
+            if FIREBASE_AVAILABLE and self.firebase_initialized:
                 try:
-                    import firebase_admin
-                    from firebase_admin import db
-                    
                     # Firebase'den sensör verilerini çek
                     ref = db.reference('sensors')
                     firebase_data = ref.get()
                     
                     if firebase_data:
-                        print(f"📊 Firebase'den sensör verisi alındı: {firebase_data}")
                         self.sensor_data.emit(firebase_data)
-                    else:
-                        print("⚠️ Firebase 'sensors' yolunda veri yok")
                         
                 except Exception as e:
-                    print(f"❌ Firebase sensör veri alma hatası: {e}")
+                    pass
             
             self.msleep(1000)  # 1 saniye bekle
+    
+
+    
+    def set_firebase_initialized(self, status: bool):
+        """Firebase durumunu güncelle"""
+        self.firebase_initialized = status
 
     def stop(self):
         self.running = False
@@ -106,27 +97,22 @@ class FirebaseThread(QThread):
         
     def initialize_firebase(self):
         if not FIREBASE_AVAILABLE:
-            print("⚠️ Firebase yüklü değil; bağlantı kapalı")
             return False
             
         try:
             # Firebase zaten başlatılmışsa sadece bağlantıyı kontrol et
             if firebase_admin._apps:
                 self.firebase_initialized = True
-                print("✅ Firebase zaten başlatılmış!")
                 return True
                 
             # Firebase'i başlat
-            cred = credentials.Certificate('firebase-credentials.json')
+            cred = credentials.Certificate('ika-db-eb609-firebase-adminsdk-fbsvc-96c3b83edc.json')
             firebase_admin.initialize_app(cred, {
-                'databaseURL': 'https://ikaarayu-default-rtdb.firebaseio.com/'
+                'databaseURL': 'https://ika-db-eb609-default-rtdb.europe-west1.firebasedatabase.app/'
             })
             self.firebase_initialized = True
-            print("✅ Firebase başarıyla başlatıldı!")
             return True
         except Exception as e:
-            print(f"❌ Firebase başlatma hatası: {e}")
-            print("🔄 Firebase yeniden denenecek...")
             self.firebase_initialized = False
             return False
     
@@ -144,6 +130,9 @@ class FirebaseThread(QThread):
                     sensors = ref.child('sensors').get()
                     if sensors:
                         self.data_received.emit({'type': 'sensors', 'data': sensors})
+                    else:
+                        # Sensör verisi yoksa bunu bildir
+                        self.data_received.emit({'type': 'sensors_empty', 'data': None})
                     
                     # Kontrol verilerini al
                     control = ref.child('control').get()
@@ -173,7 +162,6 @@ class FirebaseThread(QThread):
                     self.msleep(100)  # 10 FPS
                     
                 except Exception as e:
-                    print(f"Firebase veri alma hatası: {e}")
                     self.msleep(1000)
     
     def stop(self):
@@ -577,6 +565,8 @@ class IKADashboard(QMainWindow):
         self.laser_btn.clicked.connect(self.toggle_laser_mode)
         layout.addWidget(self.laser_btn)
 
+
+
         # Yön kontrol
         self.direction_group = QGroupBox("Yön Kontrolü")
         d = QGridLayout(self.direction_group); d.setSpacing(6)
@@ -584,18 +574,17 @@ class IKADashboard(QMainWindow):
         d.setRowStretch(3, 1)
 
         self.up_btn = QPushButton("▲\nİleri"); self.up_btn.setMinimumSize(70, 70)
-        self.down_btn = QPushButton("▼\nGeri"); self.down_btn.setMinimumSize(70, 70)
+
         self.left_btn = QPushButton("◄\nSol"); self.left_btn.setMinimumSize(70, 70)
         self.right_btn = QPushButton("►\nSağ"); self.right_btn.setMinimumSize(70, 70)
 
-        for b, name in [(self.up_btn,"up"),(self.down_btn,"down"),(self.left_btn,"left"),(self.right_btn,"right")]:
+        for b, name in [(self.up_btn,"up"),(self.left_btn,"left"),(self.right_btn,"right")]:
             b.setStyleSheet("font-size:14px;font-weight:900;")
             b.clicked.connect(lambda _, nm=name: self.direction_pressed(nm))
 
         d.addWidget(self.up_btn, 0, 1)
         d.addWidget(self.left_btn, 1, 0)
         d.addWidget(self.right_btn, 1, 2)
-        d.addWidget(self.down_btn, 2, 1)
         layout.addWidget(self.direction_group)
 
         # Vites kontrolü artık kamera paneline taşındı
@@ -604,10 +593,10 @@ class IKADashboard(QMainWindow):
         self.laser_direction_group = QGroupBox("Lazer Yön Kontrolü")
         ld = QGridLayout(self.laser_direction_group); ld.setSpacing(6)
 
-        self.laser_up_btn = QPushButton("▲\nLazer Yukarı"); self.laser_up_btn.setMinimumSize(70, 70)
-        self.laser_down_btn = QPushButton("▼\nLazer Aşağı"); self.laser_down_btn.setMinimumSize(70, 70)
-        self.laser_left_btn = QPushButton("◄\nLazer Sol"); self.laser_left_btn.setMinimumSize(70, 70)
-        self.laser_right_btn = QPushButton("►\nLazer Sağ"); self.laser_right_btn.setMinimumSize(70, 70)
+        self.laser_up_btn = QPushButton("▲\nYukarı"); self.laser_up_btn.setMinimumSize(70, 70)
+        self.laser_down_btn = QPushButton("▼\nAşağı"); self.laser_down_btn.setMinimumSize(70, 70)
+        self.laser_left_btn = QPushButton("◄\nSol"); self.laser_left_btn.setMinimumSize(70, 70)
+        self.laser_right_btn = QPushButton("►\nSağ"); self.laser_right_btn.setMinimumSize(70, 70)
         self.laser_fire_btn = QPushButton("🔥\nATEŞ!"); self.laser_fire_btn.setMinimumSize(70, 70)
 
         redish = "font-size:12px;font-weight:900;"
@@ -642,18 +631,18 @@ class IKADashboard(QMainWindow):
     def setup_shortcuts(self):
         # Yön tuşlarını hem normal sürüşte hem lazer modunda kullan
         self._sc_up = QShortcut(QKeySequence(Qt.Key.Key_Up), self)
-        self._sc_down = QShortcut(QKeySequence(Qt.Key.Key_Down), self)
+
         self._sc_left = QShortcut(QKeySequence(Qt.Key.Key_Left), self)
         self._sc_right = QShortcut(QKeySequence(Qt.Key.Key_Right), self)
-        for sc in [self._sc_up, self._sc_down, self._sc_left, self._sc_right]:
+        for sc in [self._sc_up, self._sc_left, self._sc_right]:
             sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
 
         self._sc_up.activated.connect(lambda: self._arrow_trigger("up"))
-        self._sc_down.activated.connect(lambda: self._arrow_trigger("down"))
+
         self._sc_left.activated.connect(lambda: self._arrow_trigger("left"))
         self._sc_right.activated.connect(lambda: self._arrow_trigger("right"))
 
-        # Vites kısayolları: 1,2,3 ve G
+        # Vites kısayolları: 1,2,B ve G
         self._sc_1 = QShortcut(QKeySequence(Qt.Key.Key_1), self)
         self._sc_2 = QShortcut(QKeySequence(Qt.Key.Key_2), self)
         self._sc_b = QShortcut(QKeySequence(Qt.Key.Key_B), self)
@@ -666,35 +655,186 @@ class IKADashboard(QMainWindow):
         self._sc_b.activated.connect(lambda: self._gear_trigger("B"))
         self._sc_g.activated.connect(lambda: self._gear_trigger("G"))
 
+        # Lazer ateşleme kısayolu: Space (Boşluk)
+        self._sc_fire = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
+        self._sc_fire.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._sc_fire.activated.connect(self._fire_trigger)
+
+        # Lazer modu toggle: L tuşu
+        self._sc_laser = QShortcut(QKeySequence(Qt.Key.Key_L), self)
+        self._sc_laser.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._sc_laser.activated.connect(self._laser_toggle_trigger)
+
+        # Acil durdurma: E tuşu
+        self._sc_emergency = QShortcut(QKeySequence(Qt.Key.Key_E), self)
+        self._sc_emergency.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._sc_emergency.activated.connect(self._emergency_trigger)
+
+        # Kontrol modları: M (Manuel), S (Semi), A (Auto)
+        self._sc_manual = QShortcut(QKeySequence(Qt.Key.Key_M), self)
+        self._sc_semi = QShortcut(QKeySequence(Qt.Key.Key_S), self)
+        self._sc_auto = QShortcut(QKeySequence(Qt.Key.Key_A), self)
+        
+        for sc in [self._sc_manual, self._sc_semi, self._sc_auto]:
+            sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        
+        self._sc_manual.activated.connect(lambda: self._control_mode_trigger("manual"))
+        self._sc_semi.activated.connect(lambda: self._control_mode_trigger("semi"))
+        self._sc_auto.activated.connect(lambda: self._control_mode_trigger("auto"))
+
     def _arrow_trigger(self, direction: str):
         # Lazer modu açıkken lazer yön komutlarını, değilken normal yön komutlarını gönder
         if self.laser_mode:
             self.laser_direction_pressed(direction)
         else:
             self.direction_pressed(direction)
+        
+        # Görsel geri bildirim - ilgili butonu vurgula
+        self._highlight_button(direction)
+
+    def _highlight_button(self, direction: str):
+        """Tuşa basınca ilgili butonu vurgula"""
+        # Buton eşleştirmeleri
+        button_map = {
+            'up': self.up_btn,
+            'left': self.left_btn,
+            'right': self.right_btn
+        }
+        
+        if direction in button_map:
+            button = button_map[direction]
+            # Butonu kısa süre vurgula - hover efekti gibi kenarlık
+            original_style = button.styleSheet()
+            button.setStyleSheet(original_style + "; border: 3px solid #4ecdc4; border-radius: 8px;")
+            
+            # 200ms sonra normal haline döndür
+            QTimer.singleShot(200, lambda: button.setStyleSheet(original_style))
 
     def _gear_trigger(self, gear: str):
         self.set_gear(gear)
+        
+        # Görsel geri bildirim - ilgili vites butonunu vurgula
+        self._highlight_gear_button(gear)
+
+    def _highlight_gear_button(self, gear: str):
+        """Vites tuşuna basınca ilgili butonu vurgula"""
+        # Vites buton eşleştirmeleri
+        gear_button_map = {
+            '1': self.gear1_btn,
+            '2': self.gear2_btn,
+            'B': self.gearB_btn,
+            'G': self.gearG_btn
+        }
+        
+        if gear in gear_button_map:
+            button = gear_button_map[gear]
+            # Butonu kısa süre vurgula - hover efekti gibi kenarlık
+            original_style = button.styleSheet()
+            button.setStyleSheet(original_style + "; border: 3px solid #4ecdc4; border-radius: 8px;")
+            
+            # 200ms sonra normal haline döndür
+            QTimer.singleShot(200, lambda: button.setStyleSheet(original_style))
+
+    def _fire_trigger(self):
+        """Lazer ateşleme kısayolu"""
+        if self.laser_mode:
+            self.laser_fire()
+            # Görsel geri bildirim
+            self._highlight_laser_fire_button()
+
+    def _highlight_laser_fire_button(self):
+        """Lazer ateşleme butonunu vurgula"""
+        if hasattr(self, 'laser_fire_btn'):
+            original_style = self.laser_fire_btn.styleSheet()
+            self.laser_fire_btn.setStyleSheet(original_style + "; border: 3px solid #4ecdc4; border-radius: 8px;")
+            QTimer.singleShot(200, lambda: self.laser_fire_btn.setStyleSheet(original_style))
+
+    def _laser_toggle_trigger(self):
+        """Lazer modu toggle kısayolu"""
+        self.laser_btn.click()
+        # Görsel geri bildirim
+        self._highlight_laser_toggle_button()
+
+    def _highlight_laser_toggle_button(self):
+        """Lazer toggle butonunu vurgula"""
+        original_style = self.laser_btn.styleSheet()
+        self.laser_btn.setStyleSheet(original_style + "; border: 3px solid #4ecdc4; border-radius: 8px;")
+        QTimer.singleShot(200, lambda: self.laser_btn.setStyleSheet(original_style))
+
+    def _emergency_trigger(self):
+        """Acil durdurma kısayolu"""
+        self.emergency_btn.click()
+        # Görsel geri bildirim
+        self._highlight_emergency_button()
+
+    def _highlight_emergency_button(self):
+        """Acil durdurma butonunu vurgula"""
+        original_style = self.emergency_btn.styleSheet()
+        self.emergency_btn.setStyleSheet(original_style + "; border: 3px solid #4ecdc4; border-radius: 8px;")
+        QTimer.singleShot(200, lambda: self.emergency_btn.setStyleSheet(original_style))
+
+    def _control_mode_trigger(self, mode: str):
+        """Kontrol modu kısayolu"""
+        self.set_control_mode(mode)
+        # Görsel geri bildirim
+        self._highlight_control_mode_button(mode)
+
+    def _highlight_control_mode_button(self, mode: str):
+        """Kontrol modu butonunu vurgula"""
+        mode_button_map = {
+            'manual': self.manual_btn,
+            'semi': self.semi_auto_btn,
+            'auto': self.auto_btn
+        }
+        
+        if mode in mode_button_map:
+            button = mode_button_map[mode]
+            original_style = button.styleSheet()
+            button.setStyleSheet(original_style + "; border: 3px solid #4ecdc4; border-radius: 8px;")
+            QTimer.singleShot(200, lambda: button.setStyleSheet(original_style))
+
+
 
     # ---------- Sensörler ----------
     def build_sensors(self):
         self.sensor_thread = SensorThread()
         self.sensor_thread.sensor_data.connect(self.update_sensor_data)
+        # Başlangıçta simülasyon modunda başla
+        self.sensor_thread.set_firebase_initialized(False)
         self.sensor_thread.start()
 
     def update_sensor_data(self, data):
-        self.roll_lcd.display(f"{data['imu']['roll']:.1f}")
-        self.pitch_lcd.display(f"{data['imu']['pitch']:.1f}")
-        self.yaw_lcd.display(f"{data['imu']['yaw']:.1f}")
-
-        self.lat_lcd.display(f"{data['gps']['latitude']:.6f}")
-        self.lon_lcd.display(f"{data['gps']['longitude']:.6f}")
-        self.alt_lcd.display(f"{data['gps']['altitude']:.1f}")
-        self.speed_lcd.display(f"{data['gps']['speed']:.1f}")
+        """Sensör verilerini UI'da güncelle"""
+        try:
+            # IMU verilerini güncelle
+            if 'imu' in data and isinstance(data['imu'], dict):
+                imu = data['imu']
+                if 'roll' in imu:
+                    self.roll_lcd.display(f"{float(imu['roll']):.1f}")
+                if 'pitch' in imu:
+                    self.pitch_lcd.display(f"{float(imu['pitch']):.1f}")
+                if 'yaw' in imu:
+                    self.yaw_lcd.display(f"{float(imu['yaw']):.1f}")
+            
+            # GPS verilerini güncelle
+            if 'gps' in data and isinstance(data['gps'], dict):
+                gps = data['gps']
+                if 'latitude' in gps:
+                    self.lat_lcd.display(f"{float(gps['latitude']):.6f}")
+                if 'longitude' in gps:
+                    self.lon_lcd.display(f"{float(gps['longitude']):.6f}")
+                if 'altitude' in gps:
+                    self.alt_lcd.display(f"{float(gps['altitude']):.1f}")
+                if 'speed' in gps:
+                    self.speed_lcd.display(f"{float(gps['speed']):.1f}")
+            
+            
+        except Exception as e:
+            pass
 
     # ---------- Firebase Entegrasyonu ----------
     def init_firebase(self):
-        # Firebase thread'ini başlat (şimdilik devre dışı)
+        # Firebase thread'ini başlat
         if FIREBASE_AVAILABLE:
             try:
                 self.firebase_thread = FirebaseThread()
@@ -703,51 +843,52 @@ class IKADashboard(QMainWindow):
                 
                 # Firebase başlatma
                 if self.initialize_firebase():
-                    print("✅ Firebase ana thread'de başarıyla başlatıldı!")
+                    # SensorThread'e Firebase durumunu bildir
+                    if hasattr(self, 'sensor_thread'):
+                        self.sensor_thread.set_firebase_initialized(True)
                 else:
-                    print("❌ Firebase ana thread'de başlatılamadı!")
+                    # SensorThread'e Firebase durumunu bildir
+                    if hasattr(self, 'sensor_thread'):
+                        self.sensor_thread.set_firebase_initialized(False)
             except Exception as e:
-                print(f"⚠️ Firebase thread başlatılamadı: {e}")
-                print("📱 Uygulama simülasyon modunda çalışacak")
+                # SensorThread'e Firebase durumunu bildir
+                if hasattr(self, 'sensor_thread'):
+                    self.sensor_thread.set_firebase_initialized(False)
         else:
-            print("📱 Firebase olmadan simülasyon modunda çalışıyor")
+            # SensorThread'e Firebase durumunu bildir
+            if hasattr(self, 'sensor_thread'):
+                self.sensor_thread.set_firebase_initialized(False)
     
     def initialize_firebase(self):
         """Firebase'i başlat"""
         if not FIREBASE_AVAILABLE:
-            print("⚠️ Firebase yüklü değil; bağlantı kapalı")
             self.firebase_initialized = False
             return False
             
         try:
             # Mevcut Firebase uygulamalarını temizle
             if firebase_admin._apps:
-                print("🔄 Mevcut Firebase uygulamaları temizleniyor...")
                 for app in firebase_admin._apps.copy().values():
                     firebase_admin.delete_app(app)
             
             # Firebase'i başlat
-            cred = credentials.Certificate('firebase-credentials.json')
+            cred = credentials.Certificate('ika-db-eb609-firebase-adminsdk-fbsvc-96c3b83edc.json')
             firebase_admin.initialize_app(cred, {
-                'databaseURL': 'https://ikaarayu-default-rtdb.firebaseio.com/'
+                'databaseURL': 'https://ika-db-eb609-default-rtdb.europe-west1.firebasedatabase.app/'
             })
             self.firebase_initialized = True
-            print("✅ Firebase başarıyla başlatıldı!")
             return True
             
         except Exception as e:
-            print(f"❌ Firebase başlatma hatası: {e}")
             self.firebase_initialized = False
             return False
     
     def send_to_firebase(self, path, data):
         """Firebase'e veri gönder"""
         if not FIREBASE_AVAILABLE:
-            print(f"⚠️ Firebase kütüphanesi yüklü değil, veri simüle ediliyor: {path} = {data}")
             return True
             
         if not self.firebase_initialized:
-            print(f"⚠️ Firebase bağlantısı yok, veri simüle ediliyor: {path} = {data}")
             return True
             
         try:
@@ -757,11 +898,8 @@ class IKADashboard(QMainWindow):
             
             ref = db.reference(path)
             ref.set(data)
-            print(f"✅ Firebase'e gönderildi: {path} = {data}")
             return True
         except Exception as e:
-            print(f"❌ Firebase veri gönderme hatası: {e}")
-            print(f"📝 Veri simüle ediliyor: {path} = {data}")
             return True  # Hata olsa bile uygulamayı çalışmaya devam ettir
     
     def handle_firebase_data(self, firebase_data):
@@ -769,12 +907,19 @@ class IKADashboard(QMainWindow):
         data_type = firebase_data.get('type')
         data = firebase_data.get('data')
         
-        print(f"📊 Firebase'den veri alındı: Type={data_type}, Data={data}")
         
         if data_type == 'sensors' and data:
             # Firebase'den gelen sensör verilerini UI'da göster
-            print(f"📊 Sensör verileri işleniyor: {data}")
             self.update_sensor_data(data)
+            
+            # SensorThread'e de bildir (eğer Firebase'de veri varsa simülasyonu durdur)
+            if hasattr(self, 'sensor_thread'):
+                self.sensor_thread.set_firebase_initialized(True)
+                
+        elif data_type == 'sensors_empty':
+            # Firebase'de sensör verisi yok, simülasyon moduna geç
+            if hasattr(self, 'sensor_thread'):
+                self.sensor_thread.set_firebase_initialized(False)
             
         elif data_type == 'control' and data:
             # Kontrol modunu güncelle
@@ -813,12 +958,10 @@ class IKADashboard(QMainWindow):
         elif data_type == 'commands' and data:
             # Yön komutlarını işle
             command = data.get('command', '')
-            print(f"🎮 Firebase'den yön komutu: {command}")
         
         elif data_type == 'laser' and data:
             # Lazer komutlarını işle
             command = data.get('command', '')
-            print(f"🎯 Firebase'den lazer komutu: {command}")
         
         elif data_type == 'emergency' and data is not None:
             # Acil durum komutunu işle — sadece UI durumunu güncelle, DB'ye tekrar yazma
@@ -833,27 +976,21 @@ class IKADashboard(QMainWindow):
         # Toggle davranışı: buton check durumuna göre True/False gönder
         is_active = self.emergency_btn.isChecked()
         self.emergency_btn.setText("🚨 ACİL DURDUR AKTİF" if is_active else "🚨 ACİL DURDUR")
-        if is_active:
-            print("🚨 ACİL DURDURMA AKTİF! 🚨")
-        else:
-            print("✅ Acil durdurma devre dışı")
+
         self.send_to_firebase('emergency', {'emergency': bool(is_active)})
 
     def set_control_mode(self, mode):
         if mode == "manual":
             self.semi_auto_btn.setChecked(False)
             self.auto_btn.setChecked(False)
-            print("👤 Manuel kontrol modu aktif")
             self.send_to_firebase('control', {'mode': 'manual'})
         elif mode == "semi":
             self.manual_btn.setChecked(False)
             self.auto_btn.setChecked(False)
-            print("🤖 Yarı otonom kontrol modu aktif")
             self.send_to_firebase('control', {'mode': 'semi_auto'})
         elif mode == "auto":
             self.manual_btn.setChecked(False)
             self.semi_auto_btn.setChecked(False)
-            print("🛰️ Otonom kontrol modu aktif")
             self.send_to_firebase('control', {'mode': 'auto'})
 
     def toggle_laser_mode(self):
@@ -863,17 +1000,21 @@ class IKADashboard(QMainWindow):
             self.direction_group.hide()
             self.laser_direction_group.show()
             self.laser_btn.setText("🔄 NORMAL MODA DÖN")
-            print("Lazer atış modu aktif")
+            # Firebase'e lazer modu aktif bilgisini gönder
+            self.send_to_firebase('laser_mode', {'active': True})
         else:
             self.laser_direction_group.hide()
             self.direction_group.show()
             self.laser_btn.setText("LAZER ATIŞ MODU")
-            print("Normal moda dönüldü")
+            # Firebase'e lazer modu pasif bilgisini gönder
+            self.send_to_firebase('laser_mode', {'active': False})
 
     def direction_pressed(self, direction):
-        print(f"Yön komutu: {direction}")
-        # Firebase'e yön komutu gönder
-        self.send_to_firebase('commands', {'command': direction})
+        # İleri tuşu ayrı dalda, sağ/sol aynı dalda
+        if direction == 'up':
+            self.send_to_firebase('forward', {'command': 'forward'})
+        else:
+            self.send_to_firebase('steering', {'command': direction})
         self._flash_title(f"Yön: {direction}")
 
     def set_gear(self, gear: str):
@@ -887,7 +1028,6 @@ class IKADashboard(QMainWindow):
         for key, btn in mapping.items():
             btn.setChecked(key == gear)
 
-        print(f"Vites seçildi: {gear}")
         # Firebase'e vites bilgisini ayrı 'gear' düğümüne gönder
         self.send_to_firebase('gear', {'gear': gear})
         self._flash_title(f"Vites: {gear}")
@@ -898,12 +1038,10 @@ class IKADashboard(QMainWindow):
         QTimer.singleShot(1500, lambda: self.setWindowTitle(self._base_title))
 
     def laser_direction_pressed(self, direction):
-        print(f" Lazer yön komutu: {direction}")
         # Firebase'e lazer yön komutu gönder
         self.send_to_firebase('laser', {'command': direction})
 
     def laser_fire(self):
-        print(" LAZER ATEŞLENDİ! ")
         # Firebase'e lazer ateşleme komutu gönder
         self.send_to_firebase('laser', {'command': 'fire'})
 
@@ -921,7 +1059,6 @@ class IKADashboard(QMainWindow):
     def test_firebase_connection(self):
         """Firebase bağlantısını test et"""
         if not self.firebase_initialized:
-            print("❌ Firebase bağlantısı yok!")
             return False
             
         try:
@@ -929,13 +1066,11 @@ class IKADashboard(QMainWindow):
             test_data = {'test': True, 'timestamp': time.time()}
             ref = db.reference('test_connection')
             ref.set(test_data)
-            print("✅ Firebase bağlantı testi başarılı!")
             
             # Test verisini sil
             ref.delete()
             return True
         except Exception as e:
-            print(f"❌ Firebase bağlantı testi başarısız: {e}")
             return False
 
 
