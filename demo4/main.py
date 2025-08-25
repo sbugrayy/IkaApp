@@ -20,12 +20,34 @@ class CameraPreviewThread(QThread):
         self.running = True
 
     def run(self):
+        cap = None
+        backends = [None, cv2.CAP_DSHOW, cv2.CAP_MSMF]
+        
+        # Farklı backend'leri dene
+        for backend in backends:
+            try:
+                if backend:
+                    cap = cv2.VideoCapture(self.camera_id + backend)
+                else:
+                    cap = cv2.VideoCapture(self.camera_id)
+                    
+                if cap.isOpened():
+                    print(f"Kamera {self.camera_id} başarıyla açıldı")
+                    break
+                else:
+                    cap.release()
+                    cap = None
+            except Exception as e:
+                print(f"Backend hatası: {e}")
+                if cap:
+                    cap.release()
+                    cap = None
+        
+        if not cap or not cap.isOpened():
+            print(f"Kamera {self.camera_id} açılamadı!")
+            return
+            
         try:
-            cap = cv2.VideoCapture(self.camera_id, cv2.CAP_DSHOW)  # Windows için DirectShow kullan
-            if not cap.isOpened():
-                print(f"Kamera {self.camera_id} açılamadı!")
-                return
-                
             while self.running:
                 ret, frame = cap.read()
                 if ret:
@@ -38,10 +60,13 @@ class CameraPreviewThread(QThread):
                     except Exception as e:
                         print(f"Görüntü işleme hatası: {e}")
                         break
+                else:
+                    print("Kameradan görüntü alınamadı")
+                    break
         except Exception as e:
-            print(f"Kamera thread hatası: {e}")
+            print(f"Kamera okuma hatası: {e}")
         finally:
-            if cap is not None:
+            if cap:
                 cap.release()
 
     def stop(self):
@@ -135,40 +160,85 @@ class MainWindow(QMainWindow):
         self.create_and_load_html()
 
     def get_available_cameras(self):
-        camera_list = []
-        for i in range(10):  # 10 kameraya kadar kontrol et
+        def try_camera(index, backend=None):
             try:
-                cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)  # Windows için DirectShow kullan
+                if backend:
+                    cap = cv2.VideoCapture(index + backend)
+                else:
+                    cap = cv2.VideoCapture(index)
+                
                 if cap.isOpened():
-                    camera_list.append(f"Kamera {i}")
+                    # Kamera bilgilerini al
+                    width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+                    height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+                    name = f"Kamera {index} ({int(width)}x{int(height)})"
+                    cap.release()
+                    return name
                 cap.release()
             except Exception as e:
-                print(f"Kamera {i} kontrol edilirken hata: {e}")
+                print(f"Kamera {index} kontrol hatası: {e}")
+            return None
+
+        camera_list = []
+        
+        # Farklı backend'leri dene
+        backends = [None, cv2.CAP_DSHOW, cv2.CAP_MSMF]
+        
+        for i in range(5):  # 5 kameraya kadar kontrol et
+            for backend in backends:
+                name = try_camera(i, backend)
+                if name and name not in camera_list:
+                    camera_list.append(name)
+                    break  # Bu kamera için diğer backend'leri deneme
         
         if not camera_list:
-            camera_list.append("Kamera 0")  # En azından varsayılan kamerayı ekle
+            print("Hiç kamera bulunamadı!")
+            camera_list.append("Kamera 0")
             
         return camera_list
 
     def toggle_camera_preview(self):
-        if not hasattr(self, 'preview_active') or not self.preview_active:
-            # Önizlemeyi başlat
-            self.preview_active = True
-            self.preview_button.setText("Önizlemeyi Durdur")
-            
-            for i, combo in enumerate(self.camera_combos):
-                camera_id = int(combo.currentText().split()[-1])
-                thread = CameraPreviewThread(camera_id, i)
-                thread.frame_ready.connect(self.update_preview)
-                thread.start()
-                self.camera_threads.append(thread)
-        else:
-            # Önizlemeyi durdur
+        try:
+            if not hasattr(self, 'preview_active') or not self.preview_active:
+                # Önizlemeyi başlat
+                self.preview_active = True
+                self.preview_button.setText("Önizlemeyi Durdur")
+                
+                for i, combo in enumerate(self.camera_combos):
+                    try:
+                        camera_text = combo.currentText()
+                        # Parantez içindeki çözünürlük bilgisini kaldır
+                        camera_id = int(camera_text.split()[1].split('(')[0])
+                        thread = CameraPreviewThread(camera_id, i)
+                        thread.frame_ready.connect(self.update_preview)
+                        thread.start()
+                        self.camera_threads.append(thread)
+                    except Exception as e:
+                        print(f"Kamera {i} başlatma hatası: {e}")
+            else:
+                # Önizlemeyi durdur
+                self.preview_active = False
+                self.preview_button.setText("Kamera Önizleme")
+                
+                for thread in self.camera_threads:
+                    try:
+                        thread.stop()
+                    except Exception as e:
+                        print(f"Thread durdurma hatası: {e}")
+                self.camera_threads.clear()
+                
+                # Önizleme etiketlerini temizle
+                for label in self.preview_labels:
+                    label.clear()
+        except Exception as e:
+            print(f"Kamera önizleme hatası: {e}")
             self.preview_active = False
             self.preview_button.setText("Kamera Önizleme")
-            
             for thread in self.camera_threads:
-                thread.stop()
+                try:
+                    thread.stop()
+                except:
+                    pass
             self.camera_threads.clear()
 
     def update_preview(self, image, index):
@@ -183,7 +253,7 @@ class MainWindow(QMainWindow):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agora Multi-Camera</title>
-    <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.19.3.js"></script>
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js">
     <style>
         .video-container { 
             display: flex; 
@@ -225,19 +295,38 @@ class MainWindow(QMainWindow):
                 options.token = token;
                 options.channel = channel;
                 
-                rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+                rtc.client = AgoraRTC.createClient({ 
+                    mode: "rtc", 
+                    codec: "vp8",
+                    role: isSender ? "host" : "audience"
+                });
                 
+                // Hata yakalama
+                rtc.client.on("error", (err) => {
+                    console.error("Agora istemci hatası:", err);
+                });
+                
+                rtc.client.on("connection-state-change", (curState, prevState) => {
+                    console.log(`Bağlantı durumu: ${prevState} -> ${curState}`);
+                });
+
                 rtc.client.on("user-published", async (user, mediaType) => {
-                    await rtc.client.subscribe(user, mediaType);
-                    if (mediaType === "video") {
-                        const playerContainer = document.createElement("div");
-                        playerContainer.id = user.uid;
-                        playerContainer.className = "video-item";
-                        document.getElementById("videos").append(playerContainer);
-                        user.videoTrack.play(playerContainer.id);
-                    }
-                    if (mediaType === "audio") {
-                        user.audioTrack.play();
+                    try {
+                        await rtc.client.subscribe(user, mediaType);
+                        console.log("Kullanıcıya abone olundu:", user.uid, mediaType);
+                        
+                        if (mediaType === "video") {
+                            const playerContainer = document.createElement("div");
+                            playerContainer.id = user.uid;
+                            playerContainer.className = "video-item";
+                            document.getElementById("videos").append(playerContainer);
+                            user.videoTrack.play(playerContainer.id);
+                        }
+                        if (mediaType === "audio") {
+                            user.audioTrack.play();
+                        }
+                    } catch (err) {
+                        console.error("Abone olma hatası:", err);
                     }
                 });
 
@@ -248,12 +337,31 @@ class MainWindow(QMainWindow):
                     }
                 });
 
+                // Bağlantı öncesi log
+                console.log("Kanala katılmaya çalışılıyor...");
+                console.log("AppID:", appId);
+                console.log("Channel:", channel);
+                console.log("Token var mı:", !!token);
+
                 await rtc.client.join(options.appId, options.channel, options.token || null);
+                console.log("Kanala katılım başarılı");
 
                 if (isSender) {
+                    console.log(`${cameraCount} kamera için yayın başlatılıyor...`);
                     for (let i = 0; i < cameraCount; i++) {
                         try {
-                            const cameraConfig = { deviceId: i.toString() };
+                            const cameraConfig = { 
+                                deviceId: i.toString(),
+                                encoderConfig: {
+                                    width: 640,
+                                    height: 480,
+                                    frameRate: 15,
+                                    bitrateMin: 600,
+                                    bitrateMax: 1000
+                                }
+                            };
+                            
+                            console.log(`Kamera ${i} başlatılıyor...`);
                             const videoTrack = await AgoraRTC.createCameraVideoTrack(cameraConfig);
                             rtc.localVideoTracks.push(videoTrack);
                             
@@ -263,9 +371,11 @@ class MainWindow(QMainWindow):
                             document.getElementById("videos").append(playerContainer);
                             videoTrack.play(playerContainer.id);
                             
+                            console.log(`Kamera ${i} yayını başlatılıyor...`);
                             await rtc.client.publish(videoTrack);
+                            console.log(`Kamera ${i} yayını başarılı`);
                         } catch (err) {
-                            console.error(`Kamera ${i} başlatılamadı:`, err);
+                            console.error(`Kamera ${i} hatası:`, err);
                         }
                     }
                 }
