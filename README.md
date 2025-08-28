@@ -290,13 +290,6 @@ SOFTWARE.
 - **Ayşenur Ebrar Gündüz**: [https://github.com/AysenurGunduz](https://github.com/AysenurGunduz)
 - **Sidal Sınırtaş**: [https://github.com/sidalss](https://github.com/sidalss)
 
-## 🙏 Teşekkürler
-
-- **Agora.io**: WebRTC teknolojisi
-- **PyQt6**: GUI framework
-- **Firebase**: Veri yönetimi
-- **Open Source Community**: Katkılar
-
 ---
 
 **🎉 IKA Projesi - İnsansız Kara Aracı Kontrol Sistemi**
