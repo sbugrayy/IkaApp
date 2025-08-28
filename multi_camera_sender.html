@@ -226,12 +226,12 @@
             <h3>🔧 Bağlantı Ayarları</h3>
             <div class="input-group">
                 <label for="appId">App ID:</label>
-                <input type="text" id="appId" value="1a88ae39a6444a2887b3afe99885fb29" placeholder="Agora App ID girin">
+                <input type="text" id="appId" placeholder="Agora App ID girin" required>
             </div>
             
             <div class="input-group">
                 <label for="token">Token:</label>
-                <input type="text" id="token" value="007eJxTYOCe77nr3L1jessY2O9rKGW8imbPjjGcmeCh8NVASfRk0RYFBsNEC4vEVGPLRDMTE5NEIwsL8yTjxLRUS0sLC9O0JCNLJpUNGQ2BjAwpJ3hYGBkgEMQXYMjMTozPLc0pyYxPTsxNLUpkYAAA/ychIQ==" placeholder="Token girin">
+                <input type="text" id="token" placeholder="Token girin" required>
             </div>
             
             <div class="input-group">
@@ -303,9 +303,9 @@
     </div>
 
     <script>
-        // Agora kimlik bilgileri - Environment dosyasından yüklenir
-        const AGORA_APP_ID = '1a88ae39a6444a2887b3afe99885fb29';
-        const AGORA_TOKEN = '007eJxTYPidJurKGPvjyccVBTabJIsP1Zx8Vn+EQ3XFmaR5Pxd+yX6kwGCYaGGRmGpsmWhmYmKSaGRhYZ5knJiWamlpYWGalmRkGSm2IaMhkJEh7V0UKyMDBIL4PAwlqcUl8ckZiXl5qTkMDAAqyiUX';
+        // Agora kimlik bilgileri - Form'dan alınır
+        let AGORA_APP_ID = '';
+        let AGORA_TOKEN = '';
         
         // Yayıncı bilgileri - Her kamera için ayrı kanal ve token
         const publisherInfo = [
@@ -434,10 +434,28 @@
             statusEl.className = `status ${type}`;
         }
 
+        // Form'dan kimlik bilgilerini al
+        function getCredentials() {
+            AGORA_APP_ID = document.getElementById('appId').value.trim();
+            AGORA_TOKEN = document.getElementById('token').value.trim();
+            
+            if (!AGORA_APP_ID || !AGORA_TOKEN) {
+                throw new Error('App ID ve Token alanları zorunludur!');
+            }
+            
+            // publisherInfo'yu güncelle
+            publisherInfo.forEach(publisher => {
+                publisher.appId = AGORA_APP_ID;
+            });
+        }
+        
         // Optimize edilmiş çoklu kamera başlatma fonksiyonu
         async function startMultiCamera() {
             try {
                 updateGlobalStatus('🚀 Çoklu kamera başlatılıyor...', 'info');
+                
+                // Form'dan kimlik bilgilerini al
+                getCredentials();
                 
                 // Cihaz sayısını kontrol et
                 if (deviceList.length < 3) {

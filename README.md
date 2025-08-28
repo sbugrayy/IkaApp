@@ -134,9 +134,10 @@ python test_multi_camera.py
 
 **Özellikler:**
 - 🎥 3 kamera desteği
-- 🔐 Güvenli token sistemi
+- 🔐 Güvenli token sistemi (form'dan alınır)
 - 🌐 Web tabanlı
 - 📱 Mobil uyumlu (Agora sayesinde görüntü aktarımı)
+- ✅ Kimlik bilgileri güvenli (hardcoded değil)
 
 ### **Kontrol Tuşları**
 | Tuş | Fonksiyon |

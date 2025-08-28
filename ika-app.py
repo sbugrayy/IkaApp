@@ -3,7 +3,7 @@ import time
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QGroupBox, QLCDNumber, QSizePolicy,
-    QGraphicsDropShadowEffect, QLineEdit, QMessageBox
+    QGraphicsDropShadowEffect, QMessageBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QEasingCurve, QPropertyAnimation, QRect, QTimer, QUrl
 from PyQt6.QtGui import QColor, QKeyEvent
@@ -15,21 +15,28 @@ import os
 from dotenv import load_dotenv
 from file_server import FileServer
 
-# --- Sessiz Mod / Logging Anahtarı ---
-import builtins as _builtins
-
-def _noop_print(*args, **kwargs):
-    pass
-
-# Tüm print'leri susturdum
-print = _noop_print
+# Logging ayarları
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('ika_app.log')
+    ]
+)
 
 # Environment dosyasını yükle
 load_dotenv('config.env')
 
-# Agora kimlik bilgileri
-AGORA_APP_ID = os.getenv('AGORA_APP_ID', '1a88ae39a6444a2887b3afe99885fb29')
-AGORA_TOKEN = os.getenv('AGORA_TOKEN', '007eJxTYPidJurKGPvjyccVBTabJIsP1Zx8Vn+EQ3XFmaR5Pxd+yX6kwGCYaGGRmGpsmWhmYmKSaGRhYZ5knJiWamlpYWGalmRkGSm2IaMhkJEh7V0UKyMDBIL4PAwlqcUl8ckZiXl5qTkMDAAqyiUX')
+# Agora kimlik bilgileri - Environment dosyasından alınır
+AGORA_APP_ID = os.getenv('AGORA_APP_ID')
+AGORA_TOKEN = os.getenv('AGORA_TOKEN')
+
+# Kimlik bilgileri kontrolü
+if not AGORA_APP_ID or not AGORA_TOKEN:
+    print("❌ HATA: AGORA_APP_ID veya AGORA_TOKEN bulunamadı!")
+    print("📝 Lütfen config.env dosyasını kontrol edin.")
+    sys.exit(1)
 
 # Firebase kütüphanelerini import edin (simülasyon modu)
 try:

@@ -104,10 +104,11 @@ dmypy.json
 
 # Agora ve Firebase
 config.env
-*.json
+ika-db-eb609-firebase-adminsdk-fbsvc-96c3b83edc.json
 recordings/
 *.webm
 *.mp4
+*.log
 
 # IDE
 .vscode/
