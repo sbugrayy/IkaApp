@@ -22,7 +22,7 @@
 
 ## 🎯 Proje Hakkında
 
-**IKA (Intelligent Karting Application)**, go-kart yarışları için geliştirilmiş gelişmiş bir kontrol ve izleme sistemidir. Agora WebRTC teknolojisi kullanarak çoklu kamera desteği, PyQt6 ile modern kullanıcı arayüzü ve Firebase ile gerçek zamanlı veri yönetimi sağlar.
+**IKA (İnsansız Kara Aracı)**, TEKNOFEST yarışması için geliştirilmiş gelişmiş bir kontrol ve izleme sistemidir. Agora WebRTC teknolojisi kullanarak çoklu kamera desteği, PyQt6 ile modern kullanıcı arayüzü ve Firebase ile gerçek zamanlı veri yönetimi sağlar.
 
 ### 🎯 Ana Hedefler
 - **Çoklu Kamera İzleme**: 3 farklı açıdan eş zamanlı görüntü
