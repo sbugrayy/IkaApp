@@ -1,4 +1,4 @@
-# 🚗 IKA - Intelligent Karting Application
+# 🚗 IKA - İnsansız Kara Aracı
 
 **Agora WebRTC ile Çoklu Kamera Sistemi ve PyQt6 Tabanlı Kontrol Arayüzü**
 
@@ -62,14 +62,14 @@
 
 ```
 IkaApp/
-├── 📄 ika-app.py                    # Ana PyQt6 uygulaması (alıcı)
-├── 🌐 multi_camera_sender.html      # Web tabanlı gönderici
+├── 📄 ika-app.py                   # Ana PyQt6 uygulaması (alıcı)
+├── 🌐 multi_camera_sender.html     # Web tabanlı gönderici
 ├── 🔧 file_server.py               # HTTP dosya kaydetme sunucusu
 ├── 🧪 test_multi_camera.py         # Test ve başlatma scripti
 ├── ⚙️ config.env                   # Agora kimlik bilgileri
-├── 📦 requirements.txt              # Python bağımlılıkları
-├── 📁 recordings/                   # Video kayıtları klasörü
-├── 🔥 ika-db-eb609-firebase-adminsdk-fbsvc-96c3b83edc.json
+├── 📦 requirements.txt             # Python bağımlılıkları
+├── 📁 recordings/                  # Video kayıtları klasörü
+├── 🔥 ika-db.json                  # Firebase kimlik bilgileri
 ├── 📋 .gitignore                   # Git ignore kuralları
 ├── 📄 LICENSE                      # MIT Lisansı
 └── 📖 README.md                    # Bu dosya
@@ -86,7 +86,7 @@ IkaApp/
 ### 2. **Bağımlılıkları Yükleyin**
 ```bash
 # Repository'yi klonlayın
-git clone https://github.com/yourusername/IkaApp.git
+git clone https://github.com/sbugrayy/IkaApp.git
 cd IkaApp
 
 # Virtual environment oluşturun (önerilen)
@@ -111,7 +111,7 @@ AGORA_TOKEN=your_token_here
 2. Yeni proje oluşturun
 3. Realtime Database'i etkinleştirin
 4. Service account key'i indirin
-5. `ika-db-eb609-firebase-adminsdk-fbsvc-96c3b83edc.json` dosyasını güncelleyin
+5. `ika-db.json` dosyasını güncelleyin
 
 ## 🎮 Kullanım
 
@@ -133,10 +133,10 @@ python test_multi_camera.py
 ```
 
 **Özellikler:**
-- 📱 Mobil uyumlu
 - 🎥 3 kamera desteği
 - 🔐 Güvenli token sistemi
 - 🌐 Web tabanlı
+- 📱 Mobil uyumlu (Agora sayesinde görüntü aktarımı)
 
 ### **Kontrol Tuşları**
 | Tuş | Fonksiyon |
@@ -285,9 +285,10 @@ SOFTWARE.
 
 ## 📞 İletişim
 
-- **Proje Linki**: [https://github.com/yourusername/IkaApp](https://github.com/yourusername/IkaApp)
-- **Issues**: [https://github.com/yourusername/IkaApp/issues](https://github.com/yourusername/IkaApp/issues)
-- **Wiki**: [https://github.com/yourusername/IkaApp/wiki](https://github.com/yourusername/IkaApp/wiki)
+- **Proje Linki**: [https://github.com/sbugrayy/IkaApp](https://github.com/sbugrayys/IkaApp)
+- **Buğra Yıldırım**: [https://github.com/yourusername/IkaApp/issues](https://github.com/yourusername/IkaApp/issues)
+- **Ayşenur Ebrar Gündüz**: [https://github.com/AysenurGunduz](https://github.com/AysenurGunduz)
+- **Sidal Sınırtaş**: [https://github.com/sidalss](https://github.com/sidalss)
 
 ## 🙏 Teşekkürler
 
@@ -298,6 +299,6 @@ SOFTWARE.
 
 ---
 
-**🎉 IKA Projesi - Akıllı Go-Kart Kontrol Sistemi**
+**🎉 IKA Projesi - İnsansız Kara Aracı Kontrol Sistemi**
 
-*Bu proje, go-kart yarışları için geliştirilmiş gelişmiş bir kontrol ve izleme sistemidir.*
+*Bu proje, Teknofest İka yarışması için geliştirilmiş gelişmiş bir kontrol ve izleme sistemidir.*
