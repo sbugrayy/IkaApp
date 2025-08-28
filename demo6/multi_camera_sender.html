@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>İKA Çoklu Kamera Gönderici</title>
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.19.3.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .setup-section {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .input-group {
+            margin: 15px 0;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            background: rgba(255,255,255,0.1);
+            color: white;
+            font-size: 14px;
+        }
+        
+        .input-group input::placeholder {
+            color: rgba(255,255,255,0.7);
+        }
+        
+        .camera-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        
+        .camera-card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .camera-card h3 {
+            margin-bottom: 15px;
+            color: #4ecdc4;
+            font-size: 18px;
+        }
+        
+        .video-container {
+            position: relative;
+            width: 100%;
+            height: 200px;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+        
+        .video-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .camera-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            flex: 1;
+            min-width: 100px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(45deg, #4ecdc4, #44a08d);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(78, 205, 196, 0.4);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(45deg, #95a5a6, #7f8c8d);
+            color: white;
+        }
+        
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 8px;
+            font-size: 12px;
+            text-align: center;
+            font-weight: 600;
+        }
+        
+        .status.success { background: rgba(76, 175, 80, 0.3); }
+        .status.error { background: rgba(244, 67, 54, 0.3); }
+        .status.info { background: rgba(33, 150, 243, 0.3); }
+        .status.warning { background: rgba(255, 152, 0, 0.3); }
+        
+        .device-selector {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .device-selector h4 {
+            margin-bottom: 10px;
+            color: #4ecdc4;
+        }
+        
+        .device-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+        }
+        
+        .device-item {
+            background: rgba(255,255,255,0.1);
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .device-item:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        .device-item.selected {
+            background: rgba(78, 205, 196, 0.3);
+            border: 2px solid #4ecdc4;
+        }
+        
+        @media (max-width: 768px) {
+            .camera-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📹 İKA Çoklu Kamera Gönderici</h1>
+            <p>Agora WebRTC ile çoklu kamera yayını</p>
+        </div>
+
+        <div class="setup-section">
+            <h3>🔧 Bağlantı Ayarları</h3>
+            <div class="input-group">
+                <label for="appId">App ID:</label>
+                <input type="text" id="appId" value="1a88ae39a6444a2887b3afe99885fb29" placeholder="Agora App ID girin">
+            </div>
+            
+            <div class="input-group">
+                <label for="token">Token:</label>
+                <input type="text" id="token" value="007eJxTYOCe77nr3L1jessY2O9rKGW8imbPjjGcmeCh8NVASfRk0RYFBsNEC4vEVGPLRDMTE5NEIwsL8yTjxLRUS0sLC9O0JCNLJpUNGQ2BjAwpJ3hYGBkgEMQXYMjMTozPLc0pyYxPTsxNLUpkYAAA/ychIQ==" placeholder="Token girin">
+            </div>
+            
+            <div class="input-group">
+                <label for="baseChannel">Temel Kanal Adı:</label>
+                <input type="text" id="baseChannel" value="ika_multi_camera" placeholder="Temel kanal adı">
+            </div>
+            
+            <!-- Çoklu Kamera Başlatma Butonu -->
+            <div class="input-group" style="margin-top: 20px;">
+                <button class="btn btn-primary" style="width: 100%; padding: 15px; font-size: 16px;" onclick="startMultiCamera()">
+                    🚀 Tüm Kameraları Başlat
+                </button>
+            </div>
+        </div>
+
+        <div class="device-selector">
+            <h4>📱 Kamera Seçimi</h4>
+            <div class="device-list" id="deviceList">
+                <div class="device-item" onclick="selectDevice('default')">
+                    <strong>📹 Varsayılan Kamera</strong><br>
+                    <small>Otomatik seçim</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="camera-grid">
+            <!-- Ön Kamera -->
+            <div class="camera-card">
+                <h3>🚗 Ön Kamera</h3>
+                <div class="video-container">
+                    <video id="frontCamera" autoplay muted></video>
+                </div>
+                <div class="status" id="frontStatus">Hazır</div>
+                <div class="camera-controls">
+                    <button class="btn btn-primary" onclick="startCamera('front')">Başlat</button>
+                    <button class="btn btn-danger" onclick="stopCamera('front')">Durdur</button>
+                    <button class="btn btn-secondary" onclick="switchCamera('front')">Değiştir</button>
+                </div>
+            </div>
+
+            <!-- Lazer Kamera -->
+            <div class="camera-card">
+                <h3>🎯 Lazer Atış Kamera</h3>
+                <div class="video-container">
+                    <video id="laserCamera" autoplay muted></video>
+                </div>
+                <div class="status" id="laserStatus">Hazır</div>
+                <div class="camera-controls">
+                    <button class="btn btn-primary" onclick="startCamera('laser')">Başlat</button>
+                    <button class="btn btn-danger" onclick="stopCamera('laser')">Durdur</button>
+                    <button class="btn btn-secondary" onclick="switchCamera('laser')">Değiştir</button>
+                </div>
+            </div>
+
+            <!-- Arka Kamera -->
+            <div class="camera-card">
+                <h3>🔙 Arka Kamera</h3>
+                <div class="video-container">
+                    <video id="backCamera" autoplay muted></video>
+                </div>
+                <div class="status" id="backStatus">Hazır</div>
+                <div class="camera-controls">
+                    <button class="btn btn-primary" onclick="startCamera('back')">Başlat</button>
+                    <button class="btn btn-danger" onclick="stopCamera('back')">Durdur</button>
+                    <button class="btn btn-secondary" onclick="switchCamera('back')">Değiştir</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Agora kimlik bilgileri - Environment dosyasından yüklenir
+        const AGORA_APP_ID = '1a88ae39a6444a2887b3afe99885fb29';
+        const AGORA_TOKEN = '007eJxTYPidJurKGPvjyccVBTabJIsP1Zx8Vn+EQ3XFmaR5Pxd+yX6kwGCYaGGRmGpsmWhmYmKSaGRhYZ5knJiWamlpYWGalmRkGSm2IaMhkJEh7V0UKyMDBIL4PAwlqcUl8ckZiXl5qTkMDAAqyiUX';
+        
+        // Yayıncı bilgileri - Her kamera için ayrı kanal ve token
+        const publisherInfo = [
+            { 
+                appId: AGORA_APP_ID, 
+                channelName: 'channel_one', 
+                uid: 1, 
+                token: '007eJxTYJjJXb1osVvw15vhDhLLtHw/WM6PsHnRnHDqqO3l+wLnYmoVGAwTLSwSU40tE81MTEwSjSwszJOME9NSLS0tLEzTkowsz+htyGgIZGTgfBHLxMgAgSA+N0NyRmJeXmpOfH5eKgMDAEaqIm8=',
+                cameraType: 'front',
+                deviceId: 'default'
+            },
+            { 
+                appId: AGORA_APP_ID, 
+                channelName: 'channel_two', 
+                uid: 2, 
+                token: '007eJxTYPhrVb6g/dRbz82Shf8WMzmmqkrHsemY9Lprvarx+O5wxFeBwTDRwiIx1dgy0czExCTRyMLCPMk4MS3V0tLCwjQtycjypt6GjIZARoag7m3MjAwQCOJzMyRnJOblpebEl5TnMzAAANlVITo=',
+                cameraType: 'laser',
+                deviceId: 'default'
+            },
+            { 
+                appId: AGORA_APP_ID, 
+                channelName: 'channel_three', 
+                uid: 3, 
+                token: '007eJxTYEhYEXxF43da6HQlzfhWZ0/u16ues+7817P8N0/u5i9s3j8VGAwTLSwSU40tE81MTEwSjSwszJOME9NSLS0tLEzTkowsH+ttyGgIZGQoiQhjYWSAQBCflyE5IzEvLzUnviSjKDWVgQEAot4jew==',
+                cameraType: 'back',
+                deviceId: 'default'
+            }
+        ];
+        
+        let agoraClients = {};
+        let localTracks = {};
+        let deviceList = [];
+        let selectedDevices = {
+            front: 'default',
+            laser: 'default',
+            back: 'default'
+        };
+
+        // Cihaz listesini al - AgoraRTC.getDevices() kullanarak
+        async function getDevices() {
+            try {
+                // AgoraRTC.getDevices() kullanarak cihaz listesini al
+                const devices = await AgoraRTC.getDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                
+                const deviceListEl = document.getElementById('deviceList');
+                deviceListEl.innerHTML = '';
+                
+                // Varsayılan kamera seçeneği
+                const defaultItem = document.createElement('div');
+                defaultItem.className = 'device-item';
+                defaultItem.onclick = () => selectDevice('default');
+                defaultItem.innerHTML = `
+                    <strong>📹 Varsayılan Kamera</strong><br>
+                    <small>Otomatik seçim</small>
+                `;
+                deviceListEl.appendChild(defaultItem);
+                
+                // Mevcut kameraları listele
+                videoDevices.forEach((device, index) => {
+                    const deviceItem = document.createElement('div');
+                    deviceItem.className = 'device-item';
+                    deviceItem.onclick = () => selectDevice(device.deviceId);
+                    deviceItem.innerHTML = `
+                        <strong>📹 ${device.label || `Kamera ${index + 1}`}</strong><br>
+                        <small>${device.deviceId.substring(0, 20)}...</small>
+                    `;
+                    deviceListEl.appendChild(deviceItem);
+                });
+                
+                deviceList = videoDevices;
+                
+                // Cihaz sayısını kontrol et
+                if (videoDevices.length < 3) {
+                    console.warn(`⚠️ Sadece ${videoDevices.length} kamera bulundu. 3 kamera için yeterli olmayabilir.`);
+                    updateGlobalStatus(`⚠️ Sadece ${videoDevices.length} kamera bulundu`, 'warning');
+                }
+                
+            } catch (error) {
+                console.error('Cihaz listesi alınamadı:', error);
+                updateGlobalStatus('❌ Cihaz listesi alınamadı', 'error');
+            }
+        }
+        
+        // Global durum güncelleme
+        function updateGlobalStatus(message, type = 'info') {
+            const statusEl = document.querySelector('.header p');
+            if (statusEl) {
+                statusEl.textContent = message;
+                statusEl.className = `status-${type}`;
+            }
+        }
+
+        function selectDevice(deviceId) {
+            // Tüm seçimleri kaldır
+            document.querySelectorAll('.device-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            
+            // Seçilen cihazı işaretle
+            event.target.closest('.device-item').classList.add('selected');
+            
+            // Seçilen cihazı kaydet
+            const cameraType = getCurrentCameraType();
+            if (cameraType) {
+                selectedDevices[cameraType] = deviceId;
+            }
+        }
+
+        function getCurrentCameraType() {
+            // Hangi kamera kartında olduğumuzu belirle
+            const activeElement = document.activeElement;
+            if (activeElement && activeElement.closest('.camera-card')) {
+                const card = activeElement.closest('.camera-card');
+                const title = card.querySelector('h3').textContent;
+                if (title.includes('Ön')) return 'front';
+                if (title.includes('Lazer')) return 'laser';
+                if (title.includes('Arka')) return 'back';
+            }
+            return null;
+        }
+
+        function updateStatus(cameraType, message, type = 'info') {
+            const statusEl = document.getElementById(cameraType + 'Status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+
+        // Optimize edilmiş çoklu kamera başlatma fonksiyonu
+        async function startMultiCamera() {
+            try {
+                updateGlobalStatus('🚀 Çoklu kamera başlatılıyor...', 'info');
+                
+                // Cihaz sayısını kontrol et
+                if (deviceList.length < 3) {
+                    console.warn(`⚠️ Sadece ${deviceList.length} kamera bulundu. Bazı kameralar aynı cihazı kullanabilir.`);
+                }
+                
+                // Her kamera için ayrı istemci ve yayın
+                for (let i = 0; i < publisherInfo.length; i++) {
+                    const publisher = publisherInfo[i];
+                    const cameraType = publisher.cameraType;
+                    
+                    try {
+                        await startSingleCamera(publisher);
+                    } catch (error) {
+                        console.error(`${cameraType} kamera hatası:`, error);
+                        updateStatus(cameraType, `❌ Hata: ${error.message}`, 'error');
+                    }
+                }
+                
+                updateGlobalStatus('✅ Tüm kameralar başlatıldı', 'success');
+                
+            } catch (error) {
+                console.error('Çoklu kamera başlatma hatası:', error);
+                updateGlobalStatus('❌ Çoklu kamera başlatılamadı', 'error');
+            }
+        }
+        
+        // Tek kamera başlatma fonksiyonu
+        async function startSingleCamera(publisher) {
+            const { appId, channelName, uid, token, cameraType } = publisher;
+            
+            try {
+                updateStatus(cameraType, 'Kamera başlatılıyor...', 'info');
+                
+                // Her kamera için ayrı Agora istemcisi oluştur
+                const client = AgoraRTC.createClient({ 
+                    mode: "rtc", 
+                    codec: "vp8",
+                    role: "host"
+                });
+                
+                agoraClients[cameraType] = client;
+                
+                // Cihaz seçimi - seçilen cihazı kullan
+                const deviceId = selectedDevices[cameraType];
+                const constraints = {
+                    video: {
+                        deviceId: deviceId === 'default' ? undefined : { exact: deviceId }
+                    },
+                    audio: false
+                };
+                
+                // Video track oluştur - AgoraRTC.createCameraVideoTrack() kullan
+                const videoTrack = await AgoraRTC.createCameraVideoTrack(constraints);
+                localTracks[cameraType] = videoTrack;
+                
+                // Video'yu HTML elementine ekle
+                const videoEl = document.getElementById(cameraType + 'Camera');
+                videoTrack.play(videoEl);
+                
+                // Kanala katıl - UID ile birlikte
+                if (token && token !== 'YOUR_NEW_TOKEN_HERE') {
+                    await client.join(appId, channelName, token, uid);
+                } else {
+                    // Token yoksa veya geçersizse, token olmadan dene
+                    await client.join(appId, channelName, null, uid);
+                }
+                
+                // Video track'i yayınla
+                await client.publish([videoTrack]);
+                
+                updateStatus(cameraType, '✅ Yayın aktif', 'success');
+                
+            } catch (error) {
+                console.error(`${cameraType} kamera hatası:`, error);
+                updateStatus(cameraType, `❌ Hata: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+        
+        // Eski startCamera fonksiyonu - geriye uyumluluk için
+        async function startCamera(cameraType) {
+            const publisher = publisherInfo.find(p => p.cameraType === cameraType);
+            if (publisher) {
+                await startSingleCamera(publisher);
+            } else {
+                console.error(`Bilinmeyen kamera tipi: ${cameraType}`);
+            }
+        }
+
+        async function stopCamera(cameraType) {
+            try {
+                updateStatus(cameraType, 'Kamera durduruluyor...', 'info');
+                
+                if (localTracks[cameraType]) {
+                    localTracks[cameraType].close();
+                    delete localTracks[cameraType];
+                }
+                
+                if (agoraClients[cameraType]) {
+                    await agoraClients[cameraType].leave();
+                    delete agoraClients[cameraType];
+                }
+                
+                const videoEl = document.getElementById(cameraType + 'Camera');
+                videoEl.srcObject = null;
+                
+                updateStatus(cameraType, '⏹️ Durduruldu', 'warning');
+                
+            } catch (error) {
+                console.error(`${cameraType} durdurma hatası:`, error);
+                updateStatus(cameraType, `❌ Hata: ${error.message}`, 'error');
+            }
+        }
+
+        async function switchCamera(cameraType) {
+            // Önce mevcut kamerayı durdur
+            await stopCamera(cameraType);
+            
+            // Yeni cihaz seçimi için modal göster
+            alert(`${cameraType} kamerası için yeni cihaz seçin.`);
+            
+            // Cihaz listesini güncelle
+            await getDevices();
+        }
+
+        // Sayfa yüklendiğinde
+        window.onload = async function() {
+            await getDevices();
+            
+            // Kamera kartlarına tıklama olayları ekle
+            document.querySelectorAll('.camera-card').forEach(card => {
+                card.addEventListener('click', function() {
+                    // Diğer kartlardaki seçimleri kaldır
+                    document.querySelectorAll('.device-item').forEach(item => {
+                        item.classList.remove('selected');
+                    });
+                });
+            });
+        };
+
+        // Sayfa kapatılırken tüm yayınları durdur
+        window.onbeforeunload = async function() {
+            for (const cameraType of ['front', 'laser', 'back']) {
+                if (agoraClients[cameraType]) {
+                    await stopCamera(cameraType);
+                }
+            }
+        };
+    </script>
+</body>
+</html>

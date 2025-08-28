@@ -1,17 +1,17 @@
 import sys
 import time
-import socketio
-import numpy as np
-import cv2
-from datetime import datetime
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QGroupBox, QLCDNumber, QSizePolicy,
-    QGraphicsDropShadowEffect, QLineEdit, QDialog, QCheckBox, QScrollArea,
-    QTextEdit, QTabWidget, QFrame
+    QGraphicsDropShadowEffect, QLineEdit, QMessageBox
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QThread, QEasingCurve, QPropertyAnimation, QRect, QTimer
-from PyQt6.QtGui import QColor, QKeyEvent, QPixmap, QImage
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QEasingCurve, QPropertyAnimation, QRect, QTimer, QUrl
+from PyQt6.QtGui import QColor, QKeyEvent
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEngineSettings, QWebEnginePage
+import logging
+import tempfile
+import os
 
 # --- Sessiz Mod / Logging Anahtarı ---
 import builtins as _builtins
@@ -29,10 +29,6 @@ try:
     FIREBASE_AVAILABLE = True
 except ImportError:
     FIREBASE_AVAILABLE = False
-    print("⚠️ Firebase kütüphanesi bulunamadı. Simülasyon modu kullanılacak.")
-
-# Simülasyon modu aktif (Firebase olmadan da çalışır)
-SIMULATION_MODE = True
 
 # Camera 
 class CameraPanel(QLabel):
@@ -52,6 +48,381 @@ class CameraPanel(QLabel):
         shadow = QGraphicsDropShadowEffect(blurRadius=24, xOffset=0, yOffset=8)
         shadow.setColor(QColor(0, 0, 0, 180))
         self.setGraphicsEffect(shadow)
+
+# Agora Camera Panel for remote video streaming
+class AgoraCameraPanel(QWidget):
+    def __init__(self, camera_name: str):
+        super().__init__()
+        self.camera_name = camera_name
+        self.setMinimumSize(420, 300)
+        self.is_streaming = False
+        self.html_file = None
+        
+        # Layout - tam doluluk için
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        
+        # WebView for video - tam doluluk
+        self.webview = QWebEngineView()
+        self.webview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout.addWidget(self.webview)
+        
+        # Setup WebView
+        self.setup_webview()
+        
+        # Create HTML content
+        self.html_file = self.create_webview_html()
+        self.webview.setUrl(QUrl.fromLocalFile(self.html_file))
+    
+    def setup_webview(self):
+        """WebView ayarlarını yapılandırır"""
+        profile = QWebEngineProfile.defaultProfile()
+        settings = profile.settings()
+        
+        # Medya izinleri
+        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanAccessClipboard, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.ScreenCaptureEnabled, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.WebRTCPublicInterfacesOnly, False)
+        
+        # Özel sayfa sınıfı oluştur
+        class WebEnginePage(QWebEnginePage):
+            def __init__(self, profile, parent=None):
+                super().__init__(profile, parent)
+                self.featurePermissionRequested.connect(self.handlePermissionRequest)
+                
+            def javaScriptConsoleMessage(self, level, message, line, source):
+                logging.debug(f"JS [L{line}] {message}")
+                
+            def handlePermissionRequest(self, url, feature):
+                if feature in [QWebEnginePage.Feature.MediaAudioCapture,
+                             QWebEnginePage.Feature.MediaVideoCapture,
+                             QWebEnginePage.Feature.MediaAudioVideoCapture]:
+                    self.setFeaturePermission(
+                        url,
+                        feature,
+                        QWebEnginePage.PermissionPolicy.PermissionGrantedByUser
+                    )
+                    logging.debug(f"Medya izni verildi: {feature}")
+        
+        # Özel sayfayı ayarla
+        self.page = WebEnginePage(profile, self.webview)
+        self.webview.setPage(self.page)
+    
+    def create_webview_html(self):
+        """WebView için HTML içeriği oluşturur"""
+        html_content = """
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src * 'unsafe-inline'; media-src * blob:;">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Agora Remote Video</title>
+        <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.19.3.js"></script>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            
+            body { 
+                margin: 0; 
+                padding: 0;
+                background: #000; 
+                color: white; 
+                font-family: Arial, sans-serif;
+                width: 100vw;
+                height: 100vh;
+                overflow: hidden;
+            }
+            
+            .video-container { 
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                display: flex; 
+                align-items: center; 
+                justify-content: center; 
+                background: #000;
+            }
+            
+            .video-item { 
+                position: relative;
+                width: 100%;
+                height: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .video-item video { 
+                width: 100%;
+                height: 100%;
+                background: #000; 
+                object-fit: cover;
+                border-radius: 0;
+                border: none;
+                outline: none;
+            }
+            
+            .status { 
+                position: absolute;
+                top: 10px;
+                left: 10px;
+                padding: 8px 12px;
+                border-radius: 5px;
+                background: rgba(0,0,0,0.8);
+                font-size: 11px;
+                z-index: 1000;
+                max-width: 200px;
+                word-wrap: break-word;
+                backdrop-filter: blur(5px);
+                border: 1px solid rgba(255,255,255,0.1);
+            }
+            
+            .error { background: rgba(244,67,54,0.9); }
+            .success { background: rgba(76,175,80,0.9); }
+            .info { background: rgba(33,150,243,0.9); }
+            .warning { background: rgba(255,152,0,0.9); }
+            
+            /* Responsive tasarım */
+            @media (max-width: 768px) {
+                .status {
+                    font-size: 10px;
+                    padding: 6px 10px;
+                }
+            }
+            
+            /* Video yüklenirken loading animasyonu */
+            .loading {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                color: #fff;
+                font-size: 14px;
+                z-index: 999;
+            }
+            
+            /* Video container için aspect ratio koruması */
+            .video-wrapper {
+                position: relative;
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="status" id="status">Hazırlanıyor...</div>
+        <div class="video-container">
+            <div class="video-wrapper">
+                <div class="video-item">
+                    <video id="remoteVideo" autoplay muted></video>
+                </div>
+                <div class="loading" id="loading">Video bekleniyor...</div>
+            </div>
+        </div>
+        
+        <script>
+            let agoraClient = null;
+            let isStreaming = false;
+            let loadingElement = null;
+            
+            function updateStatus(message, type = 'info') {
+                const statusEl = document.getElementById('status');
+                statusEl.textContent = message;
+                statusEl.className = 'status ' + type;
+                console.log(message);
+            }
+            
+            function showLoading(show = true) {
+                if (!loadingElement) {
+                    loadingElement = document.getElementById('loading');
+                }
+                if (loadingElement) {
+                    loadingElement.style.display = show ? 'block' : 'none';
+                }
+            }
+            
+            function resizeVideo() {
+                const video = document.getElementById('remoteVideo');
+                const container = document.querySelector('.video-container');
+                
+                if (video && container) {
+                    // Video boyutlarını container'a göre ayarla
+                    const containerWidth = container.offsetWidth;
+                    const containerHeight = container.offsetHeight;
+                    
+                    // Video aspect ratio'sunu koru ama container'ı doldur
+                    video.style.width = '100%';
+                    video.style.height = '100%';
+                    video.style.objectFit = 'cover';
+                }
+            }
+            
+            async function startStream(appId, token, channel) {
+                if (isStreaming) {
+                    updateStatus('Zaten yayın yapılıyor!', 'warning');
+                    return;
+                }
+                
+                try {
+                    showLoading(true);
+                    updateStatus('Agora istemcisi başlatılıyor...', 'info');
+                    
+                    agoraClient = AgoraRTC.createClient({ 
+                        mode: "rtc", 
+                        codec: "vp8",
+                        role: "audience"
+                    });
+                    
+                    agoraClient.on("error", (error) => {
+                        console.error('Agora istemci hatası:', error);
+                        updateStatus('❌ Agora hatası: ' + error.message, 'error');
+                        showLoading(false);
+                    });
+                    
+                    agoraClient.on("connection-state-change", (curState, prevState, reason) => {
+                        console.log('Bağlantı durumu:', prevState, '->', curState, 'Neden:', reason);
+                        updateStatus('Bağlantı: ' + curState, 'info');
+                        
+                        if (curState === 'CONNECTED') {
+                            showLoading(false);
+                        }
+                    });
+                    
+                    agoraClient.on("user-published", handleUserPublished);
+                    agoraClient.on("user-unpublished", handleUserUnpublished);
+                    
+                    updateStatus('Kanala katılım yapılıyor...', 'info');
+                    await agoraClient.join(appId, channel, token, null);
+                    
+                    isStreaming = true;
+                    updateStatus('✅ Bağlantı kuruldu, yayın bekleniyor...', 'success');
+                    
+                } catch (error) {
+                    console.error('Hata:', error);
+                    updateStatus('❌ Hata: ' + error.message, 'error');
+                    showLoading(false);
+                }
+            }
+            
+            async function stopStream() {
+                if (!isStreaming) {
+                    updateStatus('Zaten yayın yapılmıyor!', 'warning');
+                    return;
+                }
+                
+                try {
+                    updateStatus('Yayın durduruluyor...', 'info');
+                    showLoading(true);
+                    
+                    if (agoraClient) {
+                        await agoraClient.leave();
+                        agoraClient = null;
+                    }
+                    
+                    const video = document.getElementById('remoteVideo');
+                    if (video) {
+                        video.srcObject = null;
+                    }
+                    
+                    isStreaming = false;
+                    updateStatus('✅ Yayın durduruldu.', 'success');
+                    showLoading(false);
+                    
+                } catch (error) {
+                    console.error('Hata:', error);
+                    updateStatus('❌ Hata: ' + error.message, 'error');
+                    showLoading(false);
+                }
+            }
+            
+            async function handleUserPublished(user, mediaType) {
+                updateStatus('Uzak kullanıcı yayın başlattı: ' + user.uid, 'info');
+                
+                await agoraClient.subscribe(user, mediaType);
+                
+                if (mediaType === 'video') {
+                    const video = document.getElementById('remoteVideo');
+                    user.videoTrack.play("remoteVideo");
+                    
+                    // Video yüklendiğinde boyutları ayarla
+                    video.onloadedmetadata = function() {
+                        resizeVideo();
+                        showLoading(false);
+                    };
+                    
+                    updateStatus('Uzak video eklendi', 'success');
+                }
+                if (mediaType === 'audio') {
+                    user.audioTrack.play();
+                    updateStatus('Uzak ses eklendi', 'success');
+                }
+            }
+            
+            function handleUserUnpublished(user) {
+                updateStatus('Uzak kullanıcı yayın durdurdu: ' + user.uid, 'info');
+                showLoading(true);
+            }
+            
+            // Pencere boyutu değiştiğinde video boyutunu ayarla
+            window.addEventListener('resize', resizeVideo);
+            
+            // Video elementinin boyutları değiştiğinde
+            const video = document.getElementById('remoteVideo');
+            if (video) {
+                const resizeObserver = new ResizeObserver(() => {
+                    resizeVideo();
+                });
+                resizeObserver.observe(video);
+            }
+            
+            window.onload = function() {
+                updateStatus('Sayfa yüklendi ve hazır.', 'info');
+                showLoading(false);
+                resizeVideo();
+            };
+        </script>
+    </body>
+</html>
+        """
+        
+        # Geçici HTML dosyası oluştur
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as f:
+            f.write(html_content)
+            return f.name
+    
+    def start_stream(self, app_id, token, channel):
+        """Yayını başlatır"""
+        if not self.is_streaming:
+            js_code = f"startStream('{app_id}', '{token}', '{channel}')"
+            self.webview.page().runJavaScript(js_code)
+            self.is_streaming = True
+    
+    def stop_stream(self):
+        """Yayını durdurur"""
+        if self.is_streaming:
+            self.webview.page().runJavaScript("stopStream()")
+            self.is_streaming = False
+    
+    def closeEvent(self, event):
+        """Widget kapatılırken geçici dosyaları temizle"""
+        try:
+            if self.html_file and os.path.exists(self.html_file):
+                os.unlink(self.html_file)
+        except:
+            pass
+        event.accept()
 
 # Sensör verisi üretici thread (Firebase entegrasyonu ile)
 
@@ -439,12 +810,14 @@ class IKADashboard(QMainWindow):
         layout = QVBoxLayout(panel)
         layout.setSpacing(14)
 
-        # Üst satır: Ön Kamera + Vites Kontrolü
+        # Üst satır: Ön Kamera (Agora) + Vites Kontrolü
         top_row = QHBoxLayout()
         top_row.setSpacing(14)
 
-        self.front_camera = CameraPanel("Ön Kamera")
+        # Ön kamera yerine Agora kamera paneli kullan - tam doluluk
+        self.front_camera = AgoraCameraPanel("Ön Kamera (Agora)")
         self.front_camera.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.front_camera.setMinimumSize(400, 280)  # Minimum boyut
         top_row.addWidget(self.front_camera, 1)
 
         self.gear_group = self.create_gear_group()
@@ -560,44 +933,46 @@ class IKADashboard(QMainWindow):
 
         layout.addWidget(gps_group)
         
-        # Kamera Yapılandırmaları
-        camera_group = QGroupBox("📹 Kamera Yapılandırmaları")
-        camera_layout = QVBoxLayout(camera_group)
+        # Kamera Bağlantı Bilgileri
+        camera_group = QGroupBox("📹 Kamera Bağlantısı")
+        camera_layout = QGridLayout(camera_group)
         camera_layout.setSpacing(6)
         
-        # Room ID
-        room_layout = QHBoxLayout()
-        room_layout.addWidget(QLabel("Room ID:"))
-        self.room_id_input = QLineEdit()
-        self.room_id_input.setPlaceholderText("test-room-123")
-        self.room_id_input.setText("ika-camera-room")
-        room_layout.addWidget(self.room_id_input)
-        camera_layout.addLayout(room_layout)
+        # App ID
+        camera_layout.addWidget(QLabel("App ID:"), 0, 0)
+        self.app_id_input = QLineEdit()
+        self.app_id_input.setPlaceholderText("Agora App ID girin")
+        camera_layout.addWidget(self.app_id_input, 0, 1)
         
-        # Bağlantı Butonları
-        self.connect_btn = QPushButton("🔌 Sunucuya Bağlan")
-        self.connect_btn.clicked.connect(self.connect_to_server)
-        camera_layout.addWidget(self.connect_btn)
+        # Token
+        camera_layout.addWidget(QLabel("Token:"), 1, 0)
+        self.token_input = QLineEdit()
+        self.token_input.setPlaceholderText("Agora Token girin")
+        camera_layout.addWidget(self.token_input, 1, 1)
         
-        self.start_stream_btn = QPushButton("▶️ Yayını Başlat")
-        self.start_stream_btn.clicked.connect(self.start_streaming)
-        self.start_stream_btn.setEnabled(False)
-        camera_layout.addWidget(self.start_stream_btn)
+        # Channel (otomatik test_channel)
+        camera_layout.addWidget(QLabel("Channel:"), 2, 0)
+        self.channel_input = QLineEdit()
+        self.channel_input.setText("test_channel")
+        self.channel_input.setReadOnly(True)
+        camera_layout.addWidget(self.channel_input, 2, 1)
         
-        self.stop_stream_btn = QPushButton("⏹️ Yayını Durdur")
-        self.stop_stream_btn.clicked.connect(self.stop_streaming)
-        self.stop_stream_btn.setEnabled(False)
-        camera_layout.addWidget(self.stop_stream_btn)
-        
-        # Debug Butonu
-        self.debug_btn = QPushButton("🐛 Debug - Görüntü Kontrolü")
-        self.debug_btn.clicked.connect(self.debug_stream)
-        camera_layout.addWidget(self.debug_btn)
-        
-        # Kamera Durumu
-        self.camera_status_label = QLabel("🔴 Kamera Bağlantısı Yok")
-        self.camera_status_label.setStyleSheet("color: #ef4444; font-weight: bold;")
-        camera_layout.addWidget(self.camera_status_label)
+        # Yayın başlat butonu
+        self.start_stream_btn = QPushButton("🎥 Yayını Başlat")
+        self.start_stream_btn.clicked.connect(self.toggle_agora_stream)
+        self.start_stream_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #4CAF50, stop:1 #45a049);
+                border: 1px solid #4CAF50; border-radius: 8px;
+                color: white; font-weight: 800; padding: 8px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #45a049, stop:1 #4CAF50);
+            }
+        """)
+        camera_layout.addWidget(self.start_stream_btn, 3, 0, 1, 2)
         
         layout.addWidget(camera_group)
         layout.addStretch()
@@ -895,12 +1270,17 @@ class IKADashboard(QMainWindow):
 
     # Firebase Entegrasyonu!! BURAYI MUTLAKA KONTOL ET
     def init_firebase(self):
+        # Firebase thread'i her zaman oluştur (hata önleme için)
+        try:
+            self.firebase_thread = FirebaseThread()
+            self.firebase_thread.data_received.connect(self.handle_firebase_data)
+            self.firebase_thread.start()
+        except Exception as e:
+            # Firebase thread oluşturulamazsa boş bir thread oluştur
+            self.firebase_thread = None
+        
         if FIREBASE_AVAILABLE:
             try:
-                self.firebase_thread = FirebaseThread()
-                self.firebase_thread.data_received.connect(self.handle_firebase_data)
-                self.firebase_thread.start()
-                
                 if self.initialize_firebase():
                     if hasattr(self, 'sensor_thread'):
                         self.sensor_thread.set_firebase_initialized(True)
@@ -1018,6 +1398,52 @@ class IKADashboard(QMainWindow):
         self.emergency_btn.setText("🚨 ACİL DURDUR AKTİF" if is_active else "🚨 ACİL DURDUR")
 
         self.send_to_firebase('emergency', {'emergency': bool(is_active)})
+
+    def toggle_agora_stream(self):
+        """Agora yayınını başlatır/durdurur"""
+        if self.start_stream_btn.text() == "🎥 Yayını Başlat":
+            # Giriş bilgilerini kontrol et
+            app_id = self.app_id_input.text().strip()
+            token = self.token_input.text().strip()
+            channel = self.channel_input.text().strip()
+            
+            if not app_id or not token:
+                QMessageBox.warning(self, "Hata", "Lütfen App ID ve Token alanlarını doldurun!")
+                return
+            
+            # Yayını başlat
+            self.front_camera.start_stream(app_id, token, channel)
+            
+            self.start_stream_btn.setText("⏹️ Yayını Durdur")
+            self.start_stream_btn.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #f44336, stop:1 #d32f2f);
+                    border: 1px solid #f44336; border-radius: 8px;
+                    color: white; font-weight: 800; padding: 8px;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #d32f2f, stop:1 #f44336);
+                }
+            """)
+        else:
+            # Yayını durdur
+            self.front_camera.stop_stream()
+            
+            self.start_stream_btn.setText("🎥 Yayını Başlat")
+            self.start_stream_btn.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #4CAF50, stop:1 #45a049);
+                    border: 1px solid #4CAF50; border-radius: 8px;
+                    color: white; font-weight: 800; padding: 8px;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #45a049, stop:1 #4CAF50);
+                }
+            """)
 
     def set_control_mode(self, mode):
         if mode == "manual":
@@ -1137,9 +1563,11 @@ class IKADashboard(QMainWindow):
 
     def closeEvent(self, event):
         self.sensor_thread.stop()
-        self.firebase_thread.stop()
+        if hasattr(self, 'firebase_thread') and self.firebase_thread is not None:
+            self.firebase_thread.stop()
         self.sensor_thread.wait()
-        self.firebase_thread.wait()
+        if hasattr(self, 'firebase_thread') and self.firebase_thread is not None:
+            self.firebase_thread.wait()
         event.accept()
 
     def cleanup_firebase_data(self):
@@ -1363,315 +1791,6 @@ class IKADashboard(QMainWindow):
                 self._unhighlight_gear_button('G')
         
         event.accept()
-
-
-    
-    def connect_to_server(self):
-        """WebRTC sunucusuna bağlan"""
-        room_id = self.room_id_input.text().strip()
-        if not room_id:
-            print("❌ Room ID boş olamaz!")
-            return
-        
-        print(f"🔌 WebRTC sunucusuna bağlanılıyor: {room_id}")
-        
-        # Bağlantı durumunu güncelle
-        self.camera_status_label.setText("🟡 Bağlanıyor...")
-        self.camera_status_label.setStyleSheet("color: #f59e0b; font-weight: bold;")
-        
-        # WebRTC bağlantısını başlat
-        try:
-            self.init_webrtc_connection(room_id)
-            self.connect_btn.setEnabled(False)
-            self.start_stream_btn.setEnabled(True)
-            self.camera_status_label.setText("🟢 Bağlandı")
-            self.camera_status_label.setStyleSheet("color: #22c55e; font-weight: bold;")
-            print("✅ WebRTC bağlantısı başarılı!")
-        except Exception as e:
-            self.camera_status_label.setText("🔴 Bağlantı Hatası")
-            self.camera_status_label.setStyleSheet("color: #ef4444; font-weight: bold;")
-            print(f"❌ Bağlantı hatası: {str(e)}")
-    
-    def start_streaming(self):
-        """Yayını başlat"""
-        print("▶️ Yayın başlatılıyor...")
-        
-        # Kamera panellerini gerçek görüntü için hazırla
-        self.prepare_camera_panels()
-        
-        # WebRTC stream'ini başlat
-        try:
-            self.start_webrtc_stream()
-            self.start_stream_btn.setEnabled(False)
-            self.stop_stream_btn.setEnabled(True)
-            self.camera_status_label.setText("🟢 Yayın Aktif")
-            self.camera_status_label.setStyleSheet("color: #22c55e; font-weight: bold;")
-            print("✅ Yayın başarıyla başlatıldı!")
-        except Exception as e:
-            self.camera_status_label.setText("🔴 Yayın Hatası")
-            self.camera_status_label.setStyleSheet("color: #ef4444; font-weight: bold;")
-            print(f"❌ Yayın hatası: {str(e)}")
-    
-    def stop_streaming(self):
-        """Yayını durdur"""
-        print("⏹️ Yayın durduruluyor...")
-        
-        # WebRTC stream'ini durdur
-        try:
-            self.stop_webrtc_stream()
-            self.start_stream_btn.setEnabled(True)
-            self.stop_stream_btn.setEnabled(False)
-            self.camera_status_label.setText("🟡 Yayın Durduruldu")
-            self.camera_status_label.setStyleSheet("color: #f59e0b; font-weight: bold;")
-            print("✅ Yayın durduruldu!")
-        except Exception as e:
-            print(f"❌ Yayın durdurma hatası: {str(e)}")
-    
-    def debug_stream(self):
-        """Debug - görüntü kontrolü"""
-        print("🐛 Debug: Görüntü kontrolü yapılıyor...")
-        
-        # Test görüntüleri göster
-        self.show_test_images()
-        
-        # Bağlantı durumunu kontrol et
-        self.check_connection_status()
-    
-    def init_webrtc_connection(self, room_id):
-        """WebRTC bağlantısını başlat"""
-        try:
-            print(f"🔌 WebRTC bağlantısı başlatılıyor... Room: {room_id}")
-            
-            # Socket.IO client oluştur
-            self.sio = socketio.Client(
-                logger=True,  # Debug için log'ları aç
-                engineio_logger=True,  # Engine.IO log'larını da aç
-                reconnection=True,
-                reconnection_attempts=3,
-                reconnection_delay=1000
-            )
-            
-            # Event handlers
-            @self.sio.event
-            def connect():
-                print("✅ Socket.IO bağlantısı başarılı")
-                self.webrtc_connected = True
-            
-            @self.sio.event
-            def disconnect():
-                print("❌ Socket.IO bağlantısı kesildi")
-                self.webrtc_connected = False
-            
-            @self.sio.event
-            def connect_error(data):
-                print(f"❌ Socket.IO bağlantı hatası: {data}")
-            
-            @self.sio.event
-            def camera_frame(data):
-                """Kamera frame'i alındığında"""
-                try:
-                    camera_id = data.get('cameraId', 0)
-                    frame_hex = data.get('frame', '')
-                    
-                    print(f"📹 Frame alındı - Kamera: {camera_id}, Frame size: {len(frame_hex) if frame_hex else 0}")
-                    
-                    if frame_hex:
-                        # Hex'den binary'ye çevir
-                        frame_bytes = bytes.fromhex(frame_hex)
-                        frame_array = np.frombuffer(frame_bytes, dtype=np.uint8)
-                        frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
-                        
-                        if frame is not None:
-                            print(f"✅ Frame decode başarılı - Kamera: {camera_id}, Size: {frame.shape}")
-                            # Frame'i UI'da göster
-                            self.display_frame(camera_id, frame)
-                        else:
-                            print(f"❌ Frame decode başarısız - Kamera: {camera_id}")
-                    else:
-                        print(f"❌ Boş frame - Kamera: {camera_id}")
-                            
-                except Exception as e:
-                    print(f"❌ Frame işleme hatası: {str(e)}")
-            
-            # Server'a bağlan
-            server_url = "http://localhost:3000"
-            print(f"🌐 Server'a bağlanılıyor: {server_url}")
-            
-            self.sio.connect(server_url, wait_timeout=10)
-            print("🔗 Socket.IO bağlantısı kuruldu")
-            
-            # Odaya katıl
-            print(f"🚪 Odaya katılınıyor: {room_id}")
-            self.sio.emit('join-room', {
-                'roomId': room_id,
-                'role': 'receiver'
-            })
-            
-            self.room_id = room_id
-            print(f"✅ WebRTC bağlantısı başlatıldı: {room_id}")
-            
-        except Exception as e:
-            print(f"❌ WebRTC bağlantı hatası: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            self.webrtc_connected = False
-    
-    def start_webrtc_stream(self):
-        """WebRTC stream'ini başlat"""
-        try:
-            if hasattr(self, 'sio') and self.sio:
-                # Stream başlatma sinyali gönder
-                self.sio.emit('start-stream', {
-                    'roomId': self.room_id
-                })
-                self.stream_active = True
-                print("✅ WebRTC stream başlatıldı")
-                
-                # Widget boyutlarını kontrol etmek için timer başlat
-                self.size_check_timer = QTimer()
-                self.size_check_timer.timeout.connect(self.check_widget_sizes)
-                self.size_check_timer.start(1000)  # Her 1 saniyede kontrol et
-            else:
-                print("❌ Socket.IO bağlantısı yok")
-        except Exception as e:
-            print(f"❌ Stream başlatma hatası: {str(e)}")
-    
-    def check_widget_sizes(self):
-        """Widget boyutlarını kontrol et"""
-        try:
-            if hasattr(self, 'front_camera'):
-                front_size = self.front_camera.size()
-                print(f"🔍 Ön Kamera widget boyutu: {front_size}")
-            
-            if hasattr(self, 'laser_camera'):
-                laser_size = self.laser_camera.size()
-                print(f"🔍 Lazer Kamera widget boyutu: {laser_size}")
-            
-            if hasattr(self, 'back_camera'):
-                back_size = self.back_camera.size()
-                print(f"🔍 Arka Kamera widget boyutu: {back_size}")
-                
-            # Eğer tüm widget'lar hazırsa timer'ı durdur
-            if (hasattr(self, 'front_camera') and self.front_camera.size().width() > 0 and
-                hasattr(self, 'laser_camera') and self.laser_camera.size().width() > 0 and
-                hasattr(self, 'back_camera') and self.back_camera.size().width() > 0):
-                print("✅ Tüm widget'lar hazır!")
-                if hasattr(self, 'size_check_timer'):
-                    self.size_check_timer.stop()
-        except Exception as e:
-            print(f"❌ Widget boyut kontrolü hatası: {str(e)}")
-    
-    def stop_webrtc_stream(self):
-        """WebRTC stream'ini durdur"""
-        try:
-            if hasattr(self, 'sio') and self.sio:
-                # Stream durdurma sinyali gönder
-                self.sio.emit('stop-stream', {
-                    'roomId': self.room_id
-                })
-                self.stream_active = False
-                print("✅ WebRTC stream durduruldu")
-        except Exception as e:
-            print(f"❌ Stream durdurma hatası: {str(e)}")
-    
-    def display_frame(self, camera_id, frame):
-        """Frame'i UI'da göster"""
-        try:
-            print(f"🎨 Frame gösterme başlıyor - Kamera: {camera_id}, Size: {frame.shape}")
-            
-            # Frame'i QImage'e çevir
-            height, width, channel = frame.shape
-            bytes_per_line = 3 * width
-            q_image = QImage(frame.data, width, height, bytes_per_line, QImage.Format.Format_RGB888).rgbSwapped()
-            
-            # QPixmap'e çevir
-            pixmap = QPixmap.fromImage(q_image)
-            
-            # Sabit boyutla ölçekle (widget boyutu geçersizse)
-            target_size = QSize(300, 200)  # Sabit boyut
-            
-            # Kamera paneline göre ölçekle
-            if camera_id == 0:  # Ön Kamera
-                if hasattr(self, 'front_camera') and self.front_camera is not None:
-                    widget_size = self.front_camera.size()
-                    if widget_size.width() > 50 and widget_size.height() > 50:
-                        target_size = widget_size
-                    scaled_pixmap = pixmap.scaled(target_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                    self.front_camera.setPixmap(scaled_pixmap)
-                    self.front_camera.setScaledContents(True)
-                    print(f"✅ Ön Kamera frame'i gösterildi - Target size: {target_size}")
-                else:
-                    print(f"❌ front_camera widget'ı bulunamadı")
-            elif camera_id == 1:  # Lazer Kamera
-                if hasattr(self, 'laser_camera') and self.laser_camera is not None:
-                    widget_size = self.laser_camera.size()
-                    if widget_size.width() > 50 and widget_size.height() > 50:
-                        target_size = widget_size
-                    scaled_pixmap = pixmap.scaled(target_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                    self.laser_camera.setPixmap(scaled_pixmap)
-                    self.laser_camera.setScaledContents(True)
-                    print(f"✅ Lazer Kamera frame'i gösterildi - Target size: {target_size}")
-                else:
-                    print(f"❌ laser_camera widget'ı bulunamadı")
-            elif camera_id == 2:  # Arka Kamera
-                if hasattr(self, 'back_camera') and self.back_camera is not None:
-                    widget_size = self.back_camera.size()
-                    if widget_size.width() > 50 and widget_size.height() > 50:
-                        target_size = widget_size
-                    scaled_pixmap = pixmap.scaled(target_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                    self.back_camera.setPixmap(scaled_pixmap)
-                    self.back_camera.setScaledContents(True)
-                    print(f"✅ Arka Kamera frame'i gösterildi - Target size: {target_size}")
-                else:
-                    print(f"❌ back_camera widget'ı bulunamadı")
-            else:
-                print(f"❌ Bilinmeyen kamera ID: {camera_id}")
-                
-        except Exception as e:
-            print(f"❌ Frame gösterme hatası: {str(e)}")
-            import traceback
-            traceback.print_exc()
-    
-    def prepare_camera_panels(self):
-        """Kamera panellerini gerçek görüntü için hazırla"""
-        # Kamera panellerini gerçek görüntü alacak şekilde ayarla
-        self.front_camera.setText("📹 Ön Kamera\n🔄 Görüntü bekleniyor...")
-        self.laser_camera.setText("🎯 Lazer Atış Kamera\n🔄 Görüntü bekleniyor...")
-        self.back_camera.setText("📹 Arka Kamera\n🔄 Görüntü bekleniyor...")
-    
-    def show_test_images(self):
-        """Test görüntüleri göster"""
-        # Test görüntüleri göster
-        self.front_camera.setText("📹 Ön Kamera\n✅ Test Görüntüsü")
-        self.laser_camera.setText("🎯 Lazer Atış Kamera\n✅ Test Görüntüsü")
-        self.back_camera.setText("📹 Arka Kamera\n✅ Test Görüntüsü")
-    
-    def check_connection_status(self):
-        """Bağlantı durumunu kontrol et"""
-        if hasattr(self, 'webrtc_connected') and self.webrtc_connected:
-            print("✅ WebRTC bağlantısı aktif")
-        else:
-            print("❌ WebRTC bağlantısı yok")
-        
-        if hasattr(self, 'stream_active') and self.stream_active:
-            print("✅ Stream aktif")
-        else:
-            print("❌ Stream pasif")
-    
-    def closeEvent(self, event):
-        """Uygulama kapatılırken"""
-        try:
-            # WebRTC bağlantısını kapat
-            if hasattr(self, 'sio') and self.sio:
-                self.sio.disconnect()
-                print("✅ WebRTC bağlantısı kapatıldı")
-        except Exception as e:
-            print(f"❌ Bağlantı kapatma hatası: {str(e)}")
-        
-        event.accept()
-
-
-
 
 
 if __name__ == '__main__':
