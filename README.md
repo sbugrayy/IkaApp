@@ -1,4 +1,4 @@
-# 🚗 IKA - İnsansız Kara Aracı
+# 🚗 İKA - İnsansız Kara Aracı
 
 **Agora WebRTC ile Çoklu Kamera Sistemi ve PyQt6 Tabanlı Kontrol Arayüzü**
 
@@ -22,7 +22,7 @@
 
 ## 🎯 Proje Hakkında
 
-**IKA (İnsansız Kara Aracı)**, TEKNOFEST yarışması için geliştirilmiş gelişmiş bir kontrol ve izleme sistemidir. Agora WebRTC teknolojisi kullanarak çoklu kamera desteği, PyQt6 ile modern kullanıcı arayüzü ve Firebase ile gerçek zamanlı veri yönetimi sağlar.
+**İKA (İnsansız Kara Aracı)**, TEKNOFEST yarışması için geliştirilmiş gelişmiş bir kontrol ve izleme sistemidir. Agora WebRTC teknolojisi kullanarak çoklu kamera desteği, PyQt6 ile modern kullanıcı arayüzü ve Firebase ile gerçek zamanlı veri yönetimi sağlar.
 
 ### 🎯 Ana Hedefler
 - **Çoklu Kamera İzleme**: 3 farklı açıdan eş zamanlı görüntü
@@ -293,6 +293,6 @@ SOFTWARE.
 
 ---
 
-**🎉 IKA Projesi - İnsansız Kara Aracı Kontrol Sistemi**
+**🎉 İKA Projesi - İnsansız Kara Aracı Kontrol Sistemi**
 
 *Bu proje, Teknofest İka yarışması için geliştirilmiş gelişmiş bir kontrol ve izleme sistemidir.*
