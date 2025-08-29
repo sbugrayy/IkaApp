@@ -104,7 +104,10 @@ dmypy.json
 
 # Agora ve Firebase
 config.env
-ika-db-eb609-firebase-adminsdk-fbsvc-96c3b83edc.json
+# Firebase/Google Cloud Credentials
+*firebase-adminsdk*.json
+*service-account*.json
+ika-db-eb609-firebase-adminsdk-fbsvc-*.json
 recordings/
 *.webm
 *.mp4

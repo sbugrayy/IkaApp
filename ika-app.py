@@ -629,7 +629,7 @@ class FirebaseThread(QThread):
                 return True
                 
             # Firebase'i başlat
-            cred = credentials.Certificate('ika-db-eb609-firebase-adminsdk-fbsvc-96c3b83edc.json')
+            cred = credentials.Certificate('ika-db-eb609-firebase-adminsdk-fbsvc-27327d9168.json')
             firebase_admin.initialize_app(cred, {
                 'databaseURL': 'https://ika-db-eb609-default-rtdb.europe-west1.firebasedatabase.app/'
             })
@@ -1472,7 +1472,7 @@ class IKADashboard(QMainWindow):
                 for app in firebase_admin._apps.copy().values():
                     firebase_admin.delete_app(app)
             
-            cred = credentials.Certificate('ika-db-eb609-firebase-adminsdk-fbsvc-96c3b83edc.json')
+            cred = credentials.Certificate('ika-db-eb609-firebase-adminsdk-fbsvc-27327d9168.json')
             firebase_admin.initialize_app(cred, {
                 'databaseURL': 'https://ika-db-eb609-default-rtdb.europe-west1.firebasedatabase.app/'
             })
