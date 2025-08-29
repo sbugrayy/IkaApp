@@ -15,8 +15,18 @@ def main():
 
     # .env dosyasını yükle
     load_dotenv('config.env')
+    
+    # Temel Agora bilgileri
     agora_app_id = os.getenv('AGORA_APP_ID')
     agora_token = os.getenv('AGORA_TOKEN')
+    
+    # Çoklu kamera kanal ve token bilgileri
+    channel_one = os.getenv('AGORA_CHANNEL_ONE', 'channel_one')
+    token_one = os.getenv('AGORA_TOKEN_ONE', agora_token)
+    channel_two = os.getenv('AGORA_CHANNEL_TWO', 'channel_two')
+    token_two = os.getenv('AGORA_TOKEN_TWO', agora_token)
+    channel_three = os.getenv('AGORA_CHANNEL_THREE', 'channel_three')
+    token_three = os.getenv('AGORA_TOKEN_THREE', agora_token)
 
     if not agora_app_id or not agora_token:
         print("❌ HATA: AGORA_APP_ID veya AGORA_TOKEN bulunamadı!")
@@ -50,6 +60,13 @@ def main():
     html_content = html_content.replace("let AGORA_APP_ID = '';", f"let AGORA_APP_ID = '{agora_app_id}';")
     html_content = html_content.replace("let AGORA_TOKEN = '';", f"let AGORA_TOKEN = '{agora_token}';")
 
+    # Placeholder'ları config.env'deki değerlerle değiştir
+    html_content = html_content.replace('{{CHANNEL_ONE}}', channel_one)
+    html_content = html_content.replace('{{TOKEN_ONE}}', token_one)
+    html_content = html_content.replace('{{CHANNEL_TWO}}', channel_two)
+    html_content = html_content.replace('{{TOKEN_TWO}}', token_two)
+    html_content = html_content.replace('{{CHANNEL_THREE}}', channel_three)
+    html_content = html_content.replace('{{TOKEN_THREE}}', token_three)
 
     # Tarayıcının dosyayı okuyabilmesi için 'delete=False' olarak ayarlanmış geçici bir HTML dosyası oluştur
     # İşletim sistemi bu dosyayı daha sonra otomatik olarak temizleyecektir
@@ -69,9 +86,9 @@ def main():
     print("3. '🚀 Tüm Kameraları Başlat' butonuna basın")
     print("4. Veya her kamera için ayrı ayrı 'Başlat' butonuna basın")
     print("5. Farklı kameralar farklı kanallara yayın yapacak:")
-    print("   - Ön Kamera: channel_one (UID: 1)")
-    print("   - Lazer Kamera: channel_two (UID: 2)")
-    print("   - Arka Kamera: channel_three (UID: 3)")
+    print(f"   - Ön Kamera: {channel_one} (UID: 1)")
+    print(f"   - Lazer Kamera: {channel_two} (UID: 2)")
+    print(f"   - Arka Kamera: {channel_three} (UID: 3)")
     print("\n💻 İKA Uygulamasında:")
     print("1. python ika-app.py çalıştırın")
     print("2. '🎥 Yayını Başlat' butonuna basın")

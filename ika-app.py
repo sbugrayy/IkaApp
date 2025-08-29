@@ -1571,22 +1571,22 @@ class IKADashboard(QMainWindow):
         # Buton metnini kontrol et
         if "Başlat" in self.start_all_streams_btn.text():
             try:
-                # Her kamera için ayrı kanal ve token
+                # Her kamera için ayrı kanal ve token - config.env'den alınır
                 camera_configs = [
                     {
                         'camera': self.front_camera,
-                        'channel': 'channel_one',
-                        'token': '007eJxTYJjJXb1osVvw15vhDhLLtHw/WM6PsHnRnHDqqO3l+wLnYmoVGAwTLSwSU40tE81MTEwSjSwszJOME9NSLS0tLEzTkowsz+htyGgIZGTgfBHLxMgAgSA+N0NyRmJeXmpOfH5eKgMDAEaqIm8='
+                        'channel': os.getenv('AGORA_CHANNEL_ONE', 'channel_one'),
+                        'token': os.getenv('AGORA_TOKEN_ONE', AGORA_TOKEN)
                     },
                     {
                         'camera': self.laser_camera,
-                        'channel': 'channel_two',
-                        'token': '007eJxTYPhrVb6g/dRbz82Shf8WMzmmqkrHsemY9Lprvarx+O5wxFeBwTDRwiIx1dgy0czExCTRyMLCPMk4MS3V0tLCwjQtycjypt6GjIZARoag7m3MjAwQCOJzMyRnJOblpebEl5TnMzAAANlVITo='
+                        'channel': os.getenv('AGORA_CHANNEL_TWO', 'channel_two'),
+                        'token': os.getenv('AGORA_TOKEN_TWO', AGORA_TOKEN)
                     },
                     {
                         'camera': self.back_camera,
-                        'channel': 'channel_three',
-                        'token': '007eJxTYEhYEXxF43da6HQlzfhWZ0/u16ues+7817P8N0/u5i9s3j8VGAwTLSwSU40tE81MTEwSjSwszJOME9NSLS0tLEzTkowsH+ttyGgIZGQoiQhjYWSAQBCflyE5IzEvLzUnviSjKDWVgQEAot4jew=='
+                        'channel': os.getenv('AGORA_CHANNEL_THREE', 'channel_three'),
+                        'token': os.getenv('AGORA_TOKEN_THREE', AGORA_TOKEN)
                     }
                 ]
                 
