@@ -682,6 +682,11 @@ class FirebaseThread(QThread):
                     if emergency:
                         self.data_received.emit({'type': 'emergency', 'data': emergency})
                     
+                    # Araç çalıştır verilerini al
+                    vehicle_engine = ref.child('vehicle_engine').get()
+                    if vehicle_engine:
+                        self.data_received.emit({'type': 'vehicle_engine', 'data': vehicle_engine})
+                    
                     self.msleep(100)
                     
                 except Exception as e:
@@ -800,6 +805,17 @@ class IKADashboard(QMainWindow):
                 stop:0 #ea580c, stop:1 #b45309);
             border: 2px solid #f59e0b; color:#fff;
         }
+        QPushButton#vehicle_start {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #059669, stop:1 #047857);
+            border: 2px solid #10b981; color:#ecfdf5;
+            font-size: 16px; border-radius: 16px; padding:12px;
+        }
+        QPushButton#vehicle_start:checked {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #10b981, stop:1 #059669);
+            border: 3px solid #34d399; color:#fff;
+        }
         QLCDNumber {
             background:#0b1325; color:#22d3ee;
             border:1px solid #1e335a; border-radius:10px;
@@ -875,6 +891,14 @@ class IKADashboard(QMainWindow):
         }
         QPushButton#laser:checked {
             background: rgba(234,88,12,.35); border-color: rgba(234,88,12,.7);
+            color:#fff;
+        }
+        QPushButton#vehicle_start {
+            background: rgba(16,185,129,.2); border-color: rgba(16,185,129,.5);
+            color:#ecfdf5; font-size:16px; border-radius:16px; padding:12px;
+        }
+        QPushButton#vehicle_start:checked {
+            background: rgba(16,185,129,.35); border-color: rgba(16,185,129,.7);
             color:#fff;
         }
         QLCDNumber {
@@ -1149,6 +1173,13 @@ class IKADashboard(QMainWindow):
         self.emergency_btn.setCheckable(True)
         self.emergency_btn.clicked.connect(self.emergency_stop)
         layout.addWidget(self.emergency_btn)
+
+        # Araç Çalıştır
+        self.vehicle_start_btn = QPushButton("🚗 ARAÇ ÇALIŞTIR")
+        self.vehicle_start_btn.setObjectName("vehicle_start")
+        self.vehicle_start_btn.setCheckable(True)
+        self.vehicle_start_btn.clicked.connect(self.vehicle_start_stop)
+        layout.addWidget(self.vehicle_start_btn)
 
         # Durum Kontrolü
         mode_group = QGroupBox("Kontrol Modu")
@@ -1558,6 +1589,11 @@ class IKADashboard(QMainWindow):
             val = bool(data.get('emergency', False)) if isinstance(data, dict) else bool(data)
             self.emergency_btn.setChecked(val)
             self.emergency_btn.setText("🚨 ACİL DURDUR AKTİF" if val else "🚨 ACİL DURDUR")
+        
+        elif data_type == 'vehicle_engine' and data is not None:
+            val = bool(data.get('engine_running', False)) if isinstance(data, dict) else bool(data)
+            self.vehicle_start_btn.setChecked(val)
+            self.vehicle_start_btn.setText("🚗 ARAÇ ÇALIŞIYOR" if val else "🚗 ARAÇ ÇALIŞTIR")
 
     # ---------- Kontroller ----------
     def emergency_stop(self):
@@ -1565,6 +1601,12 @@ class IKADashboard(QMainWindow):
         self.emergency_btn.setText("🚨 ACİL DURDUR AKTİF" if is_active else "🚨 ACİL DURDUR")
 
         self.send_to_firebase('emergency', {'emergency': bool(is_active)})
+
+    def vehicle_start_stop(self):
+        is_active = self.vehicle_start_btn.isChecked()
+        self.vehicle_start_btn.setText("🚗 ARAÇ ÇALIŞIYOR" if is_active else "🚗 ARAÇ ÇALIŞTIR")
+
+        self.send_to_firebase('vehicle_engine', {'engine_running': bool(is_active)})
 
     def start_all_camera_streams(self):
         """Tüm kameraları aynı anda başlatır"""
