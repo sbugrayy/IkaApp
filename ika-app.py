@@ -1057,7 +1057,7 @@ class IKADashboard(QMainWindow):
         throttle_layout.setSpacing(2)
         throttle_layout.setContentsMargins(0, 8, 0, 0)
         
-        throttle_label = QLabel("Gaz Kontrolü")
+        throttle_label = QLabel("Gaz Kontrolü (↑↓)")
         throttle_label.setStyleSheet("font-size:10px;font-weight:700;color:#cbd5e1;")
         throttle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         throttle_layout.addWidget(throttle_label)
@@ -1206,16 +1206,16 @@ class IKADashboard(QMainWindow):
         layout.addWidget(self.laser_btn)
 
         # Normal Yön Tuşları
-        self.direction_group = QGroupBox("Yön Kontrolü")
+        self.direction_group = QGroupBox("Yön Kontrolü (WASD)")
         d = QGridLayout(self.direction_group); d.setSpacing(6)
         d.setContentsMargins(0, 0, 0, 0)
         d.setRowStretch(3, 1)
 
-        self.up_btn = QPushButton("▲\nİleri"); self.up_btn.setMinimumSize(70, 70)
-        self.down_btn = QPushButton("▼\nGeri"); self.down_btn.setMinimumSize(70, 70)
+        self.up_btn = QPushButton("▲\nW\nİleri"); self.up_btn.setMinimumSize(70, 70)
+        self.down_btn = QPushButton("▼\nS\nGeri"); self.down_btn.setMinimumSize(70, 70)
 
-        self.left_btn = QPushButton("◄\nSol"); self.left_btn.setMinimumSize(70, 70)
-        self.right_btn = QPushButton("►\nSağ"); self.right_btn.setMinimumSize(70, 70)
+        self.left_btn = QPushButton("◄\nA\nSol"); self.left_btn.setMinimumSize(70, 70)
+        self.right_btn = QPushButton("►\nD\nSağ"); self.right_btn.setMinimumSize(70, 70)
 
         for b, name in [(self.up_btn,"up"),(self.down_btn,"down"),(self.left_btn,"left"),(self.right_btn,"right")]:
             b.setStyleSheet("font-size:14px;font-weight:900;")
@@ -1917,17 +1917,28 @@ class IKADashboard(QMainWindow):
             event.accept()
             return
         
-        if key == Qt.Key.Key_Up:
+        # WASD ile yürütme kontrolü
+        if key == Qt.Key.Key_W:
             if key not in self.key_states or not self.key_states[key]:
                 self.key_states[key] = True
-                self.pressed_keys.add('up')
+                self.pressed_keys.add('forward')
                 if self.laser_mode:
                     self.laser_direction_pressed('up')
                     self._highlight_laser_button('up')
                 else:
                     self.direction_pressed('up')
                     self._highlight_button('up')
-        elif key == Qt.Key.Key_Left:
+        elif key == Qt.Key.Key_S:
+            if key not in self.key_states or not self.key_states[key]:
+                self.key_states[key] = True
+                self.pressed_keys.add('backward')
+                if self.laser_mode:
+                    self.laser_direction_pressed('down')
+                    self._highlight_laser_button('down')
+                else:
+                    self.direction_pressed('down')
+                    self._highlight_button('down')
+        elif key == Qt.Key.Key_A:
             if key not in self.key_states or not self.key_states[key]:
                 self.key_states[key] = True
                 self.pressed_keys.add('left')
@@ -1937,7 +1948,7 @@ class IKADashboard(QMainWindow):
                 else:
                     self.direction_pressed('left')
                     self._highlight_button('left')
-        elif key == Qt.Key.Key_Right:
+        elif key == Qt.Key.Key_D:
             if key not in self.key_states or not self.key_states[key]:
                 self.key_states[key] = True
                 self.pressed_keys.add('right')
@@ -1947,16 +1958,20 @@ class IKADashboard(QMainWindow):
                 else:
                     self.direction_pressed('right')
                     self._highlight_button('right')
+        
+        # Yön tuşları ile gaz kontrolü
+        elif key == Qt.Key.Key_Up:
+            if key not in self.key_states or not self.key_states[key]:
+                self.key_states[key] = True
+                self.pressed_keys.add('throttle_up')
+                self.throttle_pressed('up')
+                self._highlight_throttle_button('up')
         elif key == Qt.Key.Key_Down:
             if key not in self.key_states or not self.key_states[key]:
                 self.key_states[key] = True
-                self.pressed_keys.add('down')
-                if self.laser_mode:
-                    self.laser_direction_pressed('down')
-                    self._highlight_laser_button('down')
-                else:
-                    self.direction_pressed('down')
-                    self._highlight_button('down')
+                self.pressed_keys.add('throttle_down')
+                self.throttle_pressed('down')
+                self._highlight_throttle_button('down')
         
         elif key == Qt.Key.Key_1:
             if key not in self.key_states or not self.key_states[key]:
@@ -1999,18 +2014,7 @@ class IKADashboard(QMainWindow):
             self.emergency_btn.click()
             self._highlight_emergency_button()
         
-        elif key == Qt.Key.Key_Plus or key == Qt.Key.Key_Equal:
-            if key not in self.key_states or not self.key_states[key]:
-                self.key_states[key] = True
-                self.pressed_keys.add('throttle_up')
-                self.throttle_pressed('up')
-                self._highlight_throttle_button('up')
-        elif key == Qt.Key.Key_Minus:
-            if key not in self.key_states or not self.key_states[key]:
-                self.key_states[key] = True
-                self.pressed_keys.add('throttle_down')
-                self.throttle_pressed('down')
-                self._highlight_throttle_button('down')
+
         
 
         
@@ -2025,17 +2029,28 @@ class IKADashboard(QMainWindow):
             event.accept()
             return
         
-        if key == Qt.Key.Key_Up:
+        # WASD ile yürütme kontrolü
+        if key == Qt.Key.Key_W:
             if key in self.key_states and self.key_states[key]:
                 self.key_states[key] = False
-                self.pressed_keys.remove('up')
+                self.pressed_keys.remove('forward')
                 if self.laser_mode:
                     self.send_to_firebase('laser', {'command': 'null'})
                     self._unhighlight_laser_button('up')
                 else:
                     self.send_to_firebase('movement', {'command': 'null'})
                     self._unhighlight_button('up')
-        elif key == Qt.Key.Key_Left:
+        elif key == Qt.Key.Key_S:
+            if key in self.key_states and self.key_states[key]:
+                self.key_states[key] = False
+                self.pressed_keys.remove('backward')
+                if self.laser_mode:
+                    self.send_to_firebase('laser', {'command': 'null'})
+                    self._unhighlight_laser_button('down')
+                else:
+                    self.send_to_firebase('movement', {'command': 'null'})
+                    self._unhighlight_button('down')
+        elif key == Qt.Key.Key_A:
             if key in self.key_states and self.key_states[key]:
                 self.key_states[key] = False
                 self.pressed_keys.remove('left')
@@ -2045,7 +2060,7 @@ class IKADashboard(QMainWindow):
                 else:
                     self.send_to_firebase('steering', {'command': 'null'})
                     self._unhighlight_button('left')
-        elif key == Qt.Key.Key_Right:
+        elif key == Qt.Key.Key_D:
             if key in self.key_states and self.key_states[key]:
                 self.key_states[key] = False
                 self.pressed_keys.remove('right')
@@ -2055,29 +2070,22 @@ class IKADashboard(QMainWindow):
                 else:
                     self.send_to_firebase('steering', {'command': 'null'})
                     self._unhighlight_button('right')
-        elif key == Qt.Key.Key_Down:
-            if key in self.key_states and self.key_states[key]:
-                self.key_states[key] = False
-                self.pressed_keys.remove('down')
-                if self.laser_mode:
-                    self.send_to_firebase('laser', {'command': 'null'})
-                    self._unhighlight_laser_button('down')
-                else:
-                    self.send_to_firebase('movement', {'command': 'null'})
-                    self._unhighlight_button('down')
         
-        elif key == Qt.Key.Key_Plus or key == Qt.Key.Key_Equal:
+        # Yön tuşları ile gaz kontrolü
+        elif key == Qt.Key.Key_Up:
             if key in self.key_states and self.key_states[key]:
                 self.key_states[key] = False
                 self.pressed_keys.remove('throttle_up')
                 self.send_to_firebase('gas', {'command': 'null'})
                 self._unhighlight_throttle_button('up')
-        elif key == Qt.Key.Key_Minus:
+        elif key == Qt.Key.Key_Down:
             if key in self.key_states and self.key_states[key]:
                 self.key_states[key] = False
                 self.pressed_keys.remove('throttle_down')
                 self.send_to_firebase('gas', {'command': 'null'})
                 self._unhighlight_throttle_button('down')
+        
+
         
         elif key == Qt.Key.Key_Space:
             if key in self.key_states and self.key_states[key]:
