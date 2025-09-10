@@ -289,7 +289,6 @@ SOFTWARE.
 - **Proje Linki**: [https://github.com/sbugrayy/IkaApp](https://github.com/sbugrayys/IkaApp)
 - **Buğra Yıldırım**: [https://github.com/sbugrayy](https://github.com/sbugrayy)
 - **Ayşenur Ebrar Gündüz**: [https://github.com/AysenurGunduz](https://github.com/AysenurGunduz)
-- **Sidal Sınırtaş**: [https://github.com/sidalss](https://github.com/sidalss)
 
 ---
 
